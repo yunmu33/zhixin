@@ -48,7 +48,7 @@ import com.example.zhixin.ui.components.SkyDecor
 import com.example.zhixin.ui.screens.AccountDialog
 import com.example.zhixin.ui.screens.CalendarScreen
 import com.example.zhixin.ui.screens.CheckInScreen
-import com.example.zhixin.ui.screens.CollectScreen
+import com.example.zhixin.ui.screens.MoodScreen
 import com.example.zhixin.ui.screens.EditorScreen
 import com.example.zhixin.ui.screens.GuideDialog
 import com.example.zhixin.ui.screens.HomeScreen
@@ -77,7 +77,7 @@ private val TABS = listOf(
     "\uD83C\uDFE0" to "主页",
     "\uD83D\uDCC5" to "日历",
     "\uD83C\uDF31" to "日日新",
-    "\uD83D\uDCD6" to "小屋日记",
+    "\uD83D\uDE0A" to "心情日记",
     "\uD83D\uDC64" to "我的"
 )
 
@@ -440,12 +440,23 @@ private fun MainScaffold(
                     onAdd = onAddNew
                 )
 
-                3 -> CollectScreen(
+                3 -> MoodScreen(
                     entries = entries,
-                    onOpenEntry = onOpenEntry,
-                    onDelete = onDelete,
-                    onExport = onExport,
-                    onAdd = onAddDiary
+                    onQuickCheckIn = { mood, text, dateKey ->
+                        Store.add(
+                            scopeContext,
+                            Entry(
+                                time = DateKey.toMillis(dateKey) + 12 * 3600 * 1000,
+                                dateKey = dateKey,
+                                category = Category.MOOD.key,
+                                mood = mood.key,
+                                score = mood.score,
+                                text = text
+                            )
+                        )
+                        toast(scopeContext, "心情已记录 ${mood.emoji} 热度 +${Heat.BASE}")
+                    },
+                    onUpdateEntry = onUpdateEntry
                 )
 
                 else -> MineScreen(

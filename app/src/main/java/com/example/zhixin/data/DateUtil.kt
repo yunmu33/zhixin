@@ -81,6 +81,28 @@ object DateKey {
         return "${c.get(Calendar.MONTH) + 1}月${c.get(Calendar.DAY_OF_MONTH)}日"
     }
 
+    /** 如：2024年10月14日 星期一 */
+    fun formatFull(dateKey: String): String {
+        val millis = toMillis(dateKey)
+        val c = Calendar.getInstance().apply { timeInMillis = millis }
+        val weekday = listOf("周日", "周一", "周二", "周三", "周四", "周五", "周六")[c.get(Calendar.DAY_OF_WEEK) - 1]
+        return "${c.get(Calendar.YEAR)}年${c.get(Calendar.MONTH) + 1}月${c.get(Calendar.DAY_OF_MONTH)}日 $weekday"
+    }
+
+    /** 从年月日生成 dateKey（month 0-11） */
+    fun of(year: Int, month: Int, day: Int): String {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, month)
+            set(Calendar.DAY_OF_MONTH, day)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        return fromMillis(cal.timeInMillis)
+    }
+
     /** 如：21:30 */
     fun timeLabel(millis: Long): String =
         SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(millis))

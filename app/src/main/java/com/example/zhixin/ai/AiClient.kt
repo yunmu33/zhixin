@@ -129,11 +129,14 @@ object AiClient {
             val t = text.trim()
             val hit = KEYWORDS.firstOrNull { (keys, _) -> keys.any { t.contains(it) } }?.second
             val core = hit ?: when (mood) {
-                Mood.JOY -> "今天有光落在你身上，值得被记下来"
+                Mood.HAPPY -> "今天有光落在你身上，值得被记下来"
                 Mood.CALM -> "今天稳稳的，这种平静也很珍贵"
-                Mood.DOWN -> "今天心里像下了一场小雨"
+                Mood.SAD -> "今天心里像下了一场小雨"
                 Mood.ANGRY -> "有些火气堵在胸口，它其实是在替你说话"
-                Mood.SLEEPY -> "今天电量偏低，想躲进被窝里"
+                Mood.TIRED -> "今天电量偏低，想躲进被窝里"
+                Mood.EXCITED -> "今天整个人都闪闪发光"
+                Mood.HEART -> "心里软软的，像揣了颗糖"
+                Mood.ANXIOUS -> "心里有点乱，慢慢来没关系"
                 null -> "你把自己的一小段时光交给了小屋"
             }
             val first = t.lineSequence().firstOrNull { it.isNotBlank() }?.take(46) ?: "（今天只想贴个贴纸）"
@@ -145,9 +148,9 @@ object AiClient {
                 appendLine("💛 小屋想说")
                 appendLine(
                     when (mood) {
-                        Mood.JOY -> "这样的小确幸，值得被反复回看。先让它在这里躺一会儿吧。"
-                        Mood.DOWN, Mood.ANGRY -> "你已经撑过来了，情绪不需要马上变好，被写下来就已经轻了一点点。"
-                        Mood.SLEEPY -> "困意也是身体的语言，别责怪自己不够有精神。"
+                        Mood.HAPPY, Mood.EXCITED, Mood.HEART -> "这样的小确幸，值得被反复回看。先让它在这里躺一会儿吧。"
+                        Mood.SAD, Mood.ANGRY, Mood.ANXIOUS -> "你已经撑过来了，情绪不需要马上变好，被写下来就已经轻了一点点。"
+                        Mood.TIRED -> "困意也是身体的语言，别责怪自己不够有精神。"
                         else -> "小屋听到了，也接住了。你不需要立刻振作。"
                     }
                 )
@@ -156,9 +159,9 @@ object AiClient {
                     appendLine("🌱 可以试试")
                     appendLine(
                         when (mood) {
-                            Mood.JOY -> "把这份心情拍张照、或写一句给未来的自己。"
-                            Mood.DOWN, Mood.ANGRY -> "喝口温水，把肩膀松开三次；如果还想说，就继续写下去。"
-                            Mood.SLEEPY -> "比平时早睡 20 分钟，把灯调暗一点。"
+                            Mood.HAPPY, Mood.EXCITED, Mood.HEART -> "把这份心情拍张照、或写一句给未来的自己。"
+                            Mood.SAD, Mood.ANGRY, Mood.ANXIOUS -> "喝口温水，把肩膀松开三次；如果还想说，就继续写下去。"
+                            Mood.TIRED -> "比平时早睡 20 分钟，把灯调暗一点。"
                             else -> "给自己五分钟，什么都不做，只是呼吸。"
                         }
                     )
