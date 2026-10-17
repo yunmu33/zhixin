@@ -1,0 +1,25 @@
+﻿.\gradlew.bat : 
+所在位置 C:\Users\25745\AppData\Local\Temp\genie-ps-1791990711987-4fky80.ps1:954 字符: 11
++ cd d:\知新; .\gradlew.bat signingReport 2>&1 | Out-File -FilePath d:\知新 ...
++           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Timeout waiting to lock Configuration Cache (D:\知新\.gradle\configuration-cache). It is currently in use by another proc
+ess.
+Owner PID: 22592
+Our PID: 33704
+Owner Operation: 
+Our operation: 
+Lock file: D:\知新\.gradle\configuration-cache\configuration-cache.lock
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1m 5s
