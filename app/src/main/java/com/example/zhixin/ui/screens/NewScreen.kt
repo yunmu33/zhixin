@@ -38,6 +38,7 @@ import com.example.zhixin.ui.components.PrimaryButton
 import com.example.zhixin.ui.components.SoftCard
 import com.example.zhixin.ui.components.StatCard
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dialogEnter
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.clickable
@@ -234,6 +235,7 @@ fun NewScreen(
 
     if (editingEntry != null) {
         AlertDialog(
+            modifier = dialogEnter(),
             onDismissRequest = { editingEntry = null },
             containerColor = c.card,
             shape = RoundedCornerShape(20.dp),

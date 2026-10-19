@@ -26,6 +26,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,9 +37,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.zhixin.data.CUSTOM_TAG
@@ -56,7 +64,9 @@ import com.example.zhixin.ui.components.ScreenTopBar
 import com.example.zhixin.ui.components.SoftCard
 import com.example.zhixin.ui.components.StatCard
 import com.example.zhixin.ui.components.TimePickDialog
+import androidx.compose.animation.AnimatedContent
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dateTransition
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -108,6 +118,16 @@ fun TaskDetailScreen(
 
     var viewYear by remember { mutableIntStateOf(DateKey.yearOf(now)) }
     var viewMonth by remember { mutableIntStateOf(DateKey.monthOf(now)) }
+    // 月历上选中的那天，默认是今天；点别的日期就切过去看那天的打卡内容
+    var selectedKey by remember { mutableStateOf(today) }
+    val selectedLabel = remember(selectedKey) {
+        DateKey.monthDayLabel(DateKey.toMillis(selectedKey))
+    }
+    val selectedRecords = remember(mine, selectedKey) {
+        mine.filter { it.dateKey == selectedKey }.sortedBy { it.time }
+    }
+    /** 某天的打卡记录（切日期动画里用当前 key 现算，退场那一页才是对的）。 */
+    fun recordsOf(key: String) = mine.filter { it.dateKey == key }.sortedBy { it.time }
     var renaming by remember { mutableStateOf(false) }
     var editingNote by remember { mutableStateOf(false) }
     var pickingStart by remember { mutableStateOf(false) }
@@ -224,31 +244,16 @@ fun TaskDetailScreen(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "往左滑动选择更多颜色",
+                    "一共 ${TASK_COLORS.size} 种，按色系排好了",
                     style = MaterialTheme.typography.labelSmall,
                     color = c.inkSoft
                 )
             }
             Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 第一个 = 「自动」，按顺序分配
-                ColorDot(
-                    color = null,
-                    picked = item.colorIndex < 0
-                ) { onChange(item.copy(colorIndex = -1)) }
-                TASK_COLORS.indices.forEach { i ->
-                    ColorDot(
-                        color = Color(TASK_COLORS[i]),
-                        picked = item.colorIndex == i
-                    ) { onChange(item.copy(colorIndex = i)) }
-                }
-            }
+            TaskColorPicker(
+                picked = item.colorIndex,
+                onPick = { onChange(item.copy(colorIndex = it)) }
+            )
         }
 
         DividerLabel("打卡规则")
@@ -433,6 +438,41 @@ fun TaskDetailScreen(
                     onChange(item.copy(dailyTarget = (target + 1).coerceIn(1, 20)))
                 }
             }
+
+            DividerMini(c.line)
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "\uD83D\uDCDD 打卡内容编辑",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = c.ink
+                    )
+                    Text(
+                        if (item.noteEditable) {
+                            "开启：打卡后弹窗，可以写点什么"
+                        } else {
+                            "关闭：点打卡直接打上，不弹窗"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.inkSoft
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Switch(
+                    checked = item.noteEditable,
+                    onCheckedChange = { onChange(item.copy(noteEditable = it)) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = accent,
+                        uncheckedThumbColor = Color.White,
+                        uncheckedTrackColor = c.line
+                    )
+                )
+            }
         }
 
         // ── 激励语 ──
@@ -522,13 +562,20 @@ fun TaskDetailScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 MonthNav("\u2039") { shiftMonth(viewYear, viewMonth, -1)?.let { viewYear = it.first; viewMonth = it.second } }
                 Spacer(Modifier.width(8.dp))
-                Text(
-                    "${viewYear}年${viewMonth + 1}月",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = c.ink,
+                // 年月标题跟着格子一起滑
+                AnimatedContent(
+                    targetState = viewYear * 12 + viewMonth,
+                    transitionSpec = { dateTransition(targetState > initialState) },
                     modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center
-                )
+                    label = "detailMonthTitle"
+                ) { idx ->
+                    Text(
+                        "${idx / 12}年${idx % 12 + 1}月",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = c.ink,
+                        textAlign = TextAlign.Center
+                    )
+                }
                 Spacer(Modifier.width(8.dp))
                 MonthNav("\u203A") { shiftMonth(viewYear, viewMonth, 1)?.let { viewYear = it.first; viewMonth = it.second } }
             }
@@ -545,73 +592,94 @@ fun TaskDetailScreen(
                 }
             }
             Spacer(Modifier.height(6.dp))
-            val cells = remember(viewYear, viewMonth) { DateKey.monthCells(viewYear, viewMonth) }
+            Text(
+                "点日期看那天的打卡内容",
+                style = MaterialTheme.typography.labelSmall,
+                color = c.inkSoft
+            )
+            Spacer(Modifier.height(6.dp))
+            // 翻月时格子滑着换
+            AnimatedContent(
+                targetState = viewYear * 12 + viewMonth,
+                transitionSpec = { dateTransition(targetState > initialState) },
+                label = "detailMonth"
+            ) { idx ->
+            val cells = remember(idx) { DateKey.monthCells(idx / 12, idx % 12) }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 cells.chunked(7).forEach { week ->
                     Row(modifier = Modifier.fillMaxWidth()) {
                         week.forEach { millis ->
-                            val inMonth = DateKey.yearOf(millis) == viewYear &&
-                                DateKey.monthOf(millis) == viewMonth
+                            val inMonth = DateKey.yearOf(millis) == idx / 12 &&
+                                DateKey.monthOf(millis) == idx % 12
                             val day = DateKey.dayOfMonth(millis)
+                            val key = DateKey.fromMillis(millis)
                             BigDayCell(
                                 day = if (inMonth) day else null,
-                                done = inMonth && doneDayKeys.contains(DateKey.fromMillis(millis)),
-                                isToday = inMonth && DateKey.fromMillis(millis) == today,
+                                done = inMonth && doneDayKeys.contains(key),
+                                isToday = inMonth && key == today,
+                                selected = inMonth && key == selectedKey,
                                 accent = accent,
+                                enabled = inMonth,
+                                onClick = { if (inMonth) selectedKey = key },
                                 modifier = Modifier.weight(1f)
                             )
                         }
                     }
                 }
             }
+            }
         }
 
-        // ── 最近打卡 ──
+        // ── 选中那天的打卡内容 ──
         SoftCard {
-            Text(
-                "\uD83D\uDCCB 最近打卡",
-                style = MaterialTheme.typography.titleSmall,
-                color = c.ink
-            )
-            if (mine.isEmpty()) {
-                EmptyHint("\uD83C\uDF31", "还没有打过卡，点上面的按钮开始吧")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "\uD83D\uDCCB $selectedLabel 的打卡",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = c.ink,
+                    modifier = Modifier.weight(1f)
+                )
+                if (selectedRecords.isNotEmpty()) {
+                    Text(
+                        "打了 ${selectedRecords.size} 次",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = accent
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            // 换一天时这段记录滑着换
+            AnimatedContent(
+                targetState = selectedKey,
+                transitionSpec = { dateTransition(targetState > initialState) },
+                label = "detailDayRecords"
+            ) { day ->
+            if (recordsOf(day).isEmpty()) {
+                EmptyHint("\uD83C\uDF19", "这天未打卡")
             } else {
-                Spacer(Modifier.height(6.dp))
                 val fmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-                mine.take(8).forEachIndexed { i, e ->
-                    if (i > 0) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(c.line)
-                        )
-                    }
+                recordsOf(day).forEachIndexed { i, e ->
+                    if (i > 0) DividerMini(c.line)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(vertical = 8.dp)
                     ) {
-                        Text(
-                            DateKey.monthDayLabel(e.time),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = c.ink
-                        )
-                        Spacer(Modifier.width(8.dp))
                         Text(
                             fmt.format(Date(e.time)),
                             style = MaterialTheme.typography.labelSmall,
-                            color = c.inkSoft
+                            color = accent
                         )
-                        Spacer(Modifier.weight(1f))
+                        Spacer(Modifier.width(10.dp))
                         Text(
-                            "第 ${mine.size - i} 次",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = c.inkSoft
+                            recordTextOf(item, e),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = c.ink
                         )
                     }
                 }
+            }
             }
         }
 
@@ -792,16 +860,53 @@ private fun MonthNav(label: String, onClick: () -> Unit) {
     }
 }
 
-/** 月历里的一个日期格：打过卡的填色，今天描边。 */
+/** 月历里的一个日期格：打过卡的填色，今天描边，选中的再套一圈，可以点。 */
 @Composable
 private fun BigDayCell(
     day: Int?,
     done: Boolean,
     isToday: Boolean,
+    selected: Boolean,
     accent: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val c = LocalAppColors.current
+    // 选中 / 打卡状态变化时，颜色和边框慢慢过渡，别一下跳过去
+    val bg by animateColorAsState(
+        targetValue = when {
+            done -> accent
+            selected -> accent.copy(alpha = 0.16f)
+            else -> Color.Transparent
+        },
+        animationSpec = tween(220),
+        label = "dayBg"
+    )
+    val ringWidth by animateDpAsState(
+        targetValue = when {
+            selected -> 2.dp
+            isToday && !done -> 1.dp
+            else -> 0.dp
+        },
+        animationSpec = tween(220),
+        label = "dayRing"
+    )
+    val textColor by animateColorAsState(
+        targetValue = when {
+            done -> Color.White
+            selected || isToday -> accent
+            else -> c.inkSoft
+        },
+        animationSpec = tween(220),
+        label = "dayText"
+    )
+    // 选中的那天稍微放大一点，看起来像被拎起来
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.12f else 1f,
+        animationSpec = tween(220),
+        label = "dayScale"
+    )
     Box(
         modifier = modifier
             .aspectRatio(1f)
@@ -812,42 +917,49 @@ private fun BigDayCell(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .scale(scale)
                     .clip(CircleShape)
-                    .background(if (done) accent else Color.Transparent)
-                    .then(
-                        if (isToday && !done) Modifier.border(1.dp, accent, CircleShape)
-                        else Modifier
-                    ),
+                    .background(bg)
+                    .border(ringWidth, accent, CircleShape)
+                    .clickable(enabled = enabled, onClick = onClick),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     "$day",
                     fontSize = 12.sp,
                     maxLines = 1,
-                    color = when {
-                        done -> Color.White
-                        isToday -> accent
-                        else -> c.inkSoft
-                    }
+                    color = textColor
                 )
             }
         }
     }
 }
 
+/** 打卡内容：没写过的那句默认文案，就当成「这次没写」。 */
+private fun recordTextOf(item: CustomItem, entry: Entry): String {
+    val fallback = item.autoText()
+    if (entry.text == fallback) return "（这次只打了卡，没写内容）"
+    return entry.text.removePrefix("${item.emoji} ").trim().ifBlank { entry.text }
+}
+
 /** 挑颜色的小圆点：color 为 null 表示「自动」，添加任务和编辑任务共用。 */
 @Composable
-fun ColorDot(color: Color?, picked: Boolean, onClick: () -> Unit) {
+fun ColorDot(
+    color: Color?,
+    picked: Boolean,
+    onClick: () -> Unit,
+    size: Dp = 38.dp
+) {
     val c = LocalAppColors.current
     val fill = color ?: c.inkSoft.copy(alpha = 0.25f)
     Box(
         modifier = Modifier
-            .size(38.dp)
+            .size(size)
             .clip(CircleShape)
             .background(fill)
             .border(
-                2.dp,
-                if (picked) c.ink else Color.Transparent,
+                if (picked) 2.dp else 1.dp,
+                if (picked) c.ink else c.line,
                 CircleShape
             )
             .clickable { onClick() },

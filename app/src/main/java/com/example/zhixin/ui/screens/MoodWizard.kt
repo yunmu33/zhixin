@@ -1,5 +1,6 @@
 package com.example.zhixin.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -21,7 +23,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalTextStyle
@@ -48,9 +52,16 @@ import androidx.compose.ui.unit.sp
 import com.example.zhixin.data.DateKey
 import com.example.zhixin.data.Entry
 import com.example.zhixin.data.Mood
+import com.example.zhixin.ui.components.AudioSection
 import com.example.zhixin.ui.components.ImagePickGrid
 import com.example.zhixin.ui.components.InputDialog
+import com.example.zhixin.ui.components.PrimaryButton
+import com.example.zhixin.ui.components.imeAwareBottomPadding
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.ui.unit.IntSize
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.pageTransition
 import java.util.Calendar
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -99,12 +110,14 @@ fun MoodWizard(
     /** 当天已记的心情，日记页会显示成标签。 */
     mood: Mood?,
     onUpdateEntry: (Entry) -> Unit,
-    /** 向导最后一步写的日记：日期、标题、正文、配图文件名。 */
-    onAddDiary: (String, String, String, List<String>) -> Unit,
+    /** 向导最后一步写的日记：日期、标题、正文、配图文件名、语音文件名。 */
+    onAddDiary: (String, String, String, List<String>, List<String>) -> Unit,
     /** 第一页的返回 → 退回心情选择页。 */
     onBackToMood: () -> Unit,
     /** true = 改标签路线：天气 → 原因，选完原因就收工，不进日记页。 */
     tagFlow: Boolean = false,
+    /** 改标签路线：选好的标签交回日记页，等那边点保存才真的存。 */
+    onTagsSubmit: (List<String>) -> Unit = {},
     onClose: () -> Unit
 ) {
     val c = LocalAppColors.current
@@ -115,6 +128,7 @@ fun MoodWizard(
     var diaryTitle by rememberSaveable { mutableStateOf("") }
     var diaryText by rememberSaveable { mutableStateOf("") }
     var diaryImages by remember { mutableStateOf(listOf<String>()) }
+    var diaryAudios by remember { mutableStateOf(listOf<String>()) }
     var showCustomDialog by rememberSaveable { mutableStateOf(false) }
 
     val weekDays = listOf("日", "一", "二", "三", "四", "五", "六")
@@ -124,23 +138,30 @@ fun MoodWizard(
 
     fun finish() {
         val tags = listOf(weather, event).filter { it.isNotBlank() }
-        val base = existing
-        if (base != null) onUpdateEntry(base.copy(tags = tags))
-        if (diaryTitle.isNotBlank() || diaryText.isNotBlank() || diaryImages.isNotEmpty()) {
-            onAddDiary(dateKey, diaryTitle.trim(), diaryText.trim(), diaryImages)
+        if (tagFlow) {
+            // 改标签：只把选好的交回去，存不存由日记页的「保存」决定
+            onTagsSubmit(tags)
+        } else {
+            val base = existing
+            if (base != null) onUpdateEntry(base.copy(tags = tags))
+            if (diaryTitle.isNotBlank() || diaryText.isNotBlank() ||
+                diaryImages.isNotEmpty() || diaryAudios.isNotEmpty()
+            ) {
+                onAddDiary(dateKey, diaryTitle.trim(), diaryText.trim(), diaryImages, diaryAudios)
+            }
         }
         onClose()
     }
+
+    // 第二步往后按返回先退回上一步，第一步由外层退回心情选择页
+    BackHandler(enabled = step > 0) { step-- }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
-            .windowInsetsPadding(
-                WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                )
-            )
+            // 键盘弹出时整页跟着上移，写日记能看到光标
+            .imeAwareBottomPadding()
             .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp)
     ) {
         // ── 顶栏：日期 + 返回 / 跳过（和心情页同一行排版）──
@@ -199,9 +220,16 @@ fun MoodWizard(
         Spacer(Modifier.height(10.dp))
 
         // 标题：和心情页一样的两行居中（日记页的标题放在日期旁，这里就不重复了）
-        if (step < 2) {
+        // 换一步时标题也跟着淡着换
+        AnimatedContent(
+            targetState = step,
+            transitionSpec = { pageTransition(forward = targetState > initialState) },
+            label = "wizardTitle"
+        ) { s ->
+        if (s < 2) {
+            Column(modifier = Modifier.fillMaxWidth()) {
             Text(
-                if (step == 0) "你那里天气如何" else "是什么事情让你记住它",
+                if (s == 0) "你那里天气如何" else "是什么事情让你记住它",
                 style = MaterialTheme.typography.headlineSmall,
                 color = c.ink,
                 modifier = Modifier.fillMaxWidth(),
@@ -209,42 +237,44 @@ fun MoodWizard(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                if (step == 0) "天气如何呢？" else "是哪一件事呢？",
+                if (s == 0) "天气如何呢？" else "是哪一件事呢？",
                 style = MaterialTheme.typography.bodyMedium,
                 color = c.inkSoft,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(8.dp))
+            }
+        }
         }
 
-        when (step) {
+        // 天气 → 原因 → 写日记，三步之间滑着换：往下一步往左滑，往回退往右滑
+        AnimatedContent(
+            targetState = step,
+            transitionSpec = { pageTransition(forward = targetState > initialState) },
+            modifier = Modifier.weight(1f),
+            label = "wizardStep"
+        ) { s ->
+        when (s) {
             0 -> CircleOptionGroup(
                 options = WEATHER_OPTIONS,
                 selected = weather,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxSize()
             ) { key ->
-                // 再点一次取消，点新选项直接进下一步
-                if (weather == key) weather = "" else {
-                    weather = key
-                    step++
-                }
+                // 只选中，点下面「确定」才进下一步；再点一次取消选中
+                if (weather == key) weather = "" else weather = key
             }
 
             1 -> CircleOptionGroup(
                 options = EVENT_OPTIONS,
                 selected = event,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxSize()
             ) { key ->
                 when {
                     // 自定义 → 弹窗输入
                     key == "自定义" -> showCustomDialog = true
                     event == key -> event = ""
-                    else -> {
-                        event = key
-                        // 改标签路线：选完原因就收工
-                        if (tagFlow) finish() else step++
-                    }
+                    else -> event = key
                 }
             }
 
@@ -257,10 +287,29 @@ fun MoodWizard(
                 title = diaryTitle,
                 text = diaryText,
                 images = diaryImages,
-                modifier = Modifier.weight(1f),
+                audios = diaryAudios,
+                modifier = Modifier.fillMaxSize(),
                 onTitle = { diaryTitle = it },
                 onText = { diaryText = it },
-                onImages = { diaryImages = it }
+                onImages = { diaryImages = it },
+                onAudios = { diaryAudios = it }
+            )
+        }
+        }
+
+        // 天气 / 原因选好后点确定，再进入下一步
+        if (step < 2) {
+            val picked = if (step == 0) weather else event
+            Spacer(Modifier.height(8.dp))
+            PrimaryButton(
+                text = if (picked.isNotBlank()) "确定 · $picked" else "确定",
+                onClick = {
+                    if (step == 0) step = 1
+                    // 改标签路线：确定完原因就收工，不进日记页
+                    else if (tagFlow) finish() else step = 2
+                },
+                enabled = picked.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
             )
         }
 
@@ -271,10 +320,8 @@ fun MoodWizard(
                 onConfirm = { value ->
                     showCustomDialog = false
                     val t = value.trim()
-                    if (t.isNotBlank()) {
-                        event = t.take(10)
-                        if (tagFlow) finish() else step++
-                    }
+                    // 填完只选中，和点原因一样要点「确定」才继续
+                    if (t.isNotBlank()) event = t.take(10)
                 },
                 onDismiss = { showCustomDialog = false }
             )
@@ -290,13 +337,20 @@ private fun DiaryStep(
     title: String,
     text: String,
     images: List<String>,
+    audios: List<String>,
     modifier: Modifier = Modifier,
     onTitle: (String) -> Unit,
     onText: (String) -> Unit,
-    onImages: (List<String>) -> Unit
+    onImages: (List<String>) -> Unit,
+    onAudios: (List<String>) -> Unit
 ) {
     val c = LocalAppColors.current
-    Column(modifier = modifier.fillMaxWidth()) {
+    // 整块可滚动：键盘弹出时才能把光标那一行滚到看得见的地方
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+    ) {
         // 标题：居中大字
         OutlinedTextField(
             value = title,
@@ -357,13 +411,13 @@ private fun DiaryStep(
 
         Spacer(Modifier.height(10.dp))
 
-        // 正文
+        // 正文：给个最小高度，键盘弹出被压扁时也还能看到几行
         OutlinedTextField(
             value = text,
             onValueChange = onText,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .heightIn(min = 200.dp),
             shape = RoundedCornerShape(18.dp),
             placeholder = {
                 Text(
@@ -384,6 +438,15 @@ private fun DiaryStep(
                 focusedBorderColor = c.accent,
                 unfocusedBorderColor = c.line
             )
+        )
+
+        // 语音：写完字还能说两句，录完就能听
+        Spacer(Modifier.height(12.dp))
+        AudioSection(
+            files = audios,
+            editing = true,
+            onAdd = { onAudios(audios + it) },
+            onDelete = { name -> onAudios(audios - name) }
         )
 
         Spacer(Modifier.height(4.dp))
@@ -417,7 +480,8 @@ private fun CircleOptionGroup(
         val radiusPx = with(density) {
             ((if (maxWidth < maxHeight) maxWidth else maxHeight) / 2 - 54.dp).toPx()
         }
-        val offsetUp = with(density) { 36.dp.toPx() }
+        // 整圈往上挪，给下面的「确定」按钮腾位置
+        val offsetUp = with(density) { 44.dp.toPx() }
 
         options.forEachIndexed { index, option ->
             val angle = (index * 360f / options.size) - 90f

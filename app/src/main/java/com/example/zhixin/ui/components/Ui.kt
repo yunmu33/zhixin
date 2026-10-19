@@ -25,13 +25,20 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -65,11 +72,23 @@ import com.example.zhixin.data.COMMON_MOODS
 import com.example.zhixin.data.Mood
 import com.example.zhixin.ui.theme.LocalAppColors
 import com.example.zhixin.ui.theme.categoryColor
+import com.example.zhixin.ui.theme.dialogEnter
 import com.example.zhixin.ui.theme.moodColorOf
 import com.example.zhixin.ui.theme.stickerOf
 
 val CardShape = RoundedCornerShape(22.dp)
 val ChipShape = RoundedCornerShape(12.dp)
+
+/**
+ * 底部留白：键盘收起时只让开导航栏，键盘弹出时把内容顶到键盘上方。
+ * 这样输入时能看到自己写的字，收起键盘又滑回原位。
+ */
+@Composable
+fun Modifier.imeAwareBottomPadding(): Modifier = this
+    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+    // 键盘弹出时把底部顶到键盘上方，收起时只剩导航栏高度
+    .imePadding()
+    .navigationBarsPadding()
 
 @Composable
 fun SoftCard(
@@ -634,6 +653,7 @@ fun ImageViewer(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(dialogEnter())
                 .background(Color(0xF2000000))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },

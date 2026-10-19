@@ -13,6 +13,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // 明确让内容延伸到系统栏之外，Compose 才能拿到键盘高度把输入区顶上去
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
 
         Store.load(applicationContext)
         Prefs.load(applicationContext)

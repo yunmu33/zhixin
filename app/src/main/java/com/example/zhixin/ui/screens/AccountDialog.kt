@@ -35,6 +35,7 @@ import com.example.zhixin.data.Account
 import com.example.zhixin.ui.components.ChipShape
 import com.example.zhixin.ui.components.PrimaryButton
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dialogEnter
 
 @Composable
 fun AccountDialog(
@@ -60,6 +61,7 @@ fun AccountDialog(
     }
 
     AlertDialog(
+        modifier = dialogEnter(),
         onDismissRequest = onDismiss,
         containerColor = c.card,
         shape = RoundedCornerShape(24.dp),

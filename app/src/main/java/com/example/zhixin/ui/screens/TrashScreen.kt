@@ -31,10 +31,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.zhixin.data.Category
+import com.example.zhixin.data.DateKey
 import com.example.zhixin.data.Entry
+import com.example.zhixin.data.TodoItem
+import com.example.zhixin.data.TodoZone
+import java.util.Calendar
 import com.example.zhixin.ui.components.ConfirmDialog
 import com.example.zhixin.ui.components.EmptyHint
 import com.example.zhixin.ui.components.ScreenTopBar
@@ -54,12 +60,16 @@ fun TrashScreen(
     trash: List<Entry>,
     onRestore: (Entry) -> Unit,
     onDeleteForever: (Entry) -> Unit,
+    /** 被删掉的待办（清掉已做 / 单条删除进来的）。 */
+    trashTodos: List<TodoItem>,
+    onRestoreTodo: (TodoItem) -> Unit,
+    onDeleteTodoForever: (TodoItem) -> Unit,
     onEmpty: () -> Unit,
     onBack: () -> Unit
 ) {
     val c = LocalAppColors.current
     var confirmEmpty by remember { mutableStateOf(false) }
-    val total = trash.size
+    val total = trash.size + trashTodos.size
 
     Column(
         modifier = Modifier
@@ -94,12 +104,40 @@ fun TrashScreen(
                 contentPadding = PaddingValues(bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(trash, key = { it.id }) { entry ->
-                    TrashRow(
-                        entry = entry,
-                        onRestore = { onRestore(entry) },
-                        onDeleteForever = { onDeleteForever(entry) }
-                    )
+                // 先是被删掉的待办
+                if (trashTodos.isNotEmpty()) {
+                    item {
+                        Text(
+                            "\uD83D\uDDD3 待办 ${
+                                trashTodos.size
+                            } 条",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = c.ink
+                        )
+                    }
+                    items(trashTodos, key = { it.id }) { todo ->
+                        TrashTodoRow(
+                            todo = todo,
+                            onRestore = { onRestoreTodo(todo) },
+                            onDeleteForever = { onDeleteTodoForever(todo) }
+                        )
+                    }
+                }
+                if (trash.isNotEmpty()) {
+                    item {
+                        Text(
+                            "\uD83D\uDCC4 记录 ${trash.size} 条",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = c.ink
+                        )
+                    }
+                    items(trash, key = { it.id }) { entry ->
+                        TrashRow(
+                            entry = entry,
+                            onRestore = { onRestore(entry) },
+                            onDeleteForever = { onDeleteForever(entry) }
+                        )
+                    }
                 }
             }
         }
@@ -117,6 +155,65 @@ fun TrashScreen(
             onDismiss = { confirmEmpty = false }
         )
     }
+}
+
+/** 回收站里的一条待办：能恢复到原来那天那一格。 */
+@Composable
+private fun TrashTodoRow(
+    todo: TodoItem,
+    onRestore: () -> Unit,
+    onDeleteForever: () -> Unit
+) {
+    val c = LocalAppColors.current
+    val zone = TodoZone.of(todo.zone)
+    val tint = Color(zone.colorHex)
+    val whenText = remember(todo.startKey(), todo.startAt, todo.endAt) {
+        if (!todo.hasRange()) {
+            DateKey.monthDayLabel(DateKey.toMillis(todo.startKey()))
+        } else if (todo.startKey() == todo.endKey()) {
+            "${DateKey.monthDayLabel(todo.startAt)} ${hm(todo.startAt)}–${hm(todo.endAt)}"
+        } else {
+            "${DateKey.monthDayLabel(todo.startAt)} ${hm(todo.startAt)} → " +
+                "${DateKey.monthDayLabel(todo.endAt)} ${hm(todo.endAt)}"
+        }
+    }
+    SoftCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(zone.emoji, fontSize = 22.sp)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    todo.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = c.ink,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "${zone.label} · $whenText${if (todo.done) " · 已完成" else ""}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = tint
+                )
+                Spacer(Modifier.height(8.dp))
+                Row {
+                    TinyButton(text = "恢复", onClick = onRestore)
+                    Spacer(Modifier.width(8.dp))
+                    TinyButton(text = "彻底删除", onClick = onDeleteForever)
+                }
+            }
+        }
+    }
+}
+
+private fun hm(millis: Long): String {
+    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    return String.format(
+        Locale.US,
+        "%02d:%02d",
+        cal.get(Calendar.HOUR_OF_DAY),
+        cal.get(Calendar.MINUTE)
+    )
 }
 
 @Composable

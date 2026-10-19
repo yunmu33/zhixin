@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,14 +58,24 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import com.example.zhixin.data.Category
+import com.example.zhixin.data.AudioStore
 import com.example.zhixin.data.DateKey
+import com.example.zhixin.data.ImageStore
 import com.example.zhixin.data.Entry
 import com.example.zhixin.data.Mood
+import com.example.zhixin.ui.components.AudioSection
 import com.example.zhixin.ui.components.ImagePickGrid
+import com.example.zhixin.ui.components.PrimaryButton
+import com.example.zhixin.ui.components.imeAwareBottomPadding
 import com.example.zhixin.ui.components.ImageThumb
 import com.example.zhixin.ui.components.ImageViewer
+import androidx.compose.animation.AnimatedContent
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dateTransition
+import com.example.zhixin.ui.theme.fadeTransition
 import com.example.zhixin.ui.theme.moodStickers
+import com.example.zhixin.ui.theme.overlayEnter
+import com.example.zhixin.ui.theme.popIn
 import com.example.zhixin.ui.theme.stickerOf
 import java.util.Calendar
 
@@ -73,13 +87,16 @@ import java.util.Calendar
 @Composable
 fun MoodScreen(
     entries: List<Entry>,
-    onQuickCheckIn: (Mood, String, String) -> Unit,
+    onQuickCheckIn: (Mood, String, String, List<String>) -> Unit,
     onUpdateEntry: (Entry) -> Unit,
     /** 向导最后一步写的日记：日期、标题、正文、配图文件名。 */
-    onAddDiary: (String, String, String, List<String>) -> Unit
+    onAddDiary: (String, String, String, List<String>, List<String>) -> Unit
 ) {
     val c = LocalAppColors.current
     val today = DateKey.fromMillis(System.currentTimeMillis())
+    // 改标签时选到一半的草稿：回到日记页点「保存」才真的存下去
+    var draftMood by remember { mutableStateOf<String?>(null) }
+    var draftTags by remember { mutableStateOf<List<String>?>(null) }
 
     val moodEntries = remember(entries) {
         entries.filter { !it.deleted && it.category == Category.MOOD.key }
@@ -145,15 +162,19 @@ fun MoodScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val cal = currentMonth
-                    Text(
-                        "%d年%d月".format(
-                            cal.get(Calendar.YEAR),
-                            cal.get(Calendar.MONTH) + 1
-                        ),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = c.ink,
-                        modifier = Modifier.weight(1f)
-                    )
+                    // 年月标题跟着格子一起滑
+                    AnimatedContent(
+                        targetState = cal.get(Calendar.YEAR) * 12 + cal.get(Calendar.MONTH),
+                        transitionSpec = { dateTransition(targetState > initialState) },
+                        modifier = Modifier.weight(1f),
+                        label = "moodMonthTitle"
+                    ) {
+                        Text(
+                            "%d年%d月".format(it / 12, it % 12 + 1),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = c.ink
+                        )
+                    }
                     listOf("\u2039", "\u203A", "今").forEachIndexed { i, label ->
                         if (i > 0) Spacer(Modifier.width(6.dp))
                         Box(
@@ -197,7 +218,14 @@ fun MoodScreen(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                MoodCalendarGrid(
+                // 翻月时格子滑着换：往后翻往左滑，往前翻往右滑
+                val monthIndex =
+                    currentMonth.get(Calendar.YEAR) * 12 + currentMonth.get(Calendar.MONTH)
+                AnimatedContent(
+                    targetState = monthIndex,
+                    transitionSpec = { dateTransition(targetState > initialState) },
+                    label = "moodMonth"
+                ) { MoodCalendarGrid(
                     month = currentMonth,
                     moodMap = moodMap,
                     diaryKeys = diaryKeys,
@@ -209,42 +237,83 @@ fun MoodScreen(
                     } else {
                         pickerDate = dateKey
                     }
-                }
+                } }
             }
         }
 
     }
 
+    // 覆盖层打开时铺一层拦截，挡住点到后面的日历
+    if (pickerDate != null || wizardDate != null || viewDate != null || tagDate != null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(c.bg)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { }
+        )
+    }
+
     pickerDate?.let { dateKey ->
+        // 心情选择页滑进来
+        Box(modifier = Modifier.fillMaxSize().then(overlayEnter())) {
+        // 手机上按返回：退回心情日记，不是退出 App
+        BackHandler {
+            pickerDate = null
+            // 改标签时按返回 → 回到日记页，半路选的作废
+            if (tagFlowDate == dateKey) {
+                draftMood = null
+                draftTags = null
+                tagFlowDate = null
+                viewDate = dateKey
+            }
+        }
         MoodCirclePicker(
             dateKey = dateKey,
             existing = moodMap[dateKey],
             onPick = { mood ->
                 pickerDate = null
                 val existing = moodMap[dateKey]
-                if (existing != null) {
-                    // 已经记过心情 → 只换心情，保留原来的标签和文字
-                    onUpdateEntry(
-                        existing.copy(mood = mood.key, score = mood.score)
-                    )
+                if (tagFlowDate == dateKey) {
+                    // 改标签路线：先只记在草稿里，日记页点保存才算数
+                    draftMood = mood.key
+                    tagDate = dateKey
                 } else {
-                    onQuickCheckIn(mood, "", dateKey)
+                    if (existing != null) {
+                        // 已经记过心情 → 只换心情，保留原来的标签和文字
+                        onUpdateEntry(
+                            existing.copy(mood = mood.key, score = mood.score)
+                        )
+                    } else {
+                        onQuickCheckIn(mood, "", dateKey, listOf())
+                    }
+                    wizardDate = dateKey
                 }
-                // 改标签路线：心情 → 原因；否则走完整向导
-                if (tagFlowDate == dateKey) tagDate = dateKey else wizardDate = dateKey
             },
             onClose = {
                 pickerDate = null
-                // 改标签时按返回 → 回到日记页
+                // 改标签时按返回 → 回到日记页，半路选的作废
                 if (tagFlowDate == dateKey) {
+                    draftMood = null
+                    draftTags = null
                     tagFlowDate = null
                     viewDate = dateKey
                 }
             }
         )
+        }
     }
 
     wizardDate?.let { dateKey ->
+        // 记一记向导滑进来
+        Box(modifier = Modifier.fillMaxSize().then(overlayEnter())) {
+        // 向导第一步再按返回 → 退回心情选择页
+        BackHandler {
+            wizardDate = null
+            pickerDate = dateKey
+        }
         MoodWizard(
             dateKey = dateKey,
             existing = moodMap[dateKey],
@@ -257,31 +326,68 @@ fun MoodScreen(
             },
             onClose = { wizardDate = null }
         )
+        }
     }
 
     viewDate?.let { dateKey ->
         val entry = diaryMap[dateKey]
         if (entry != null) {
+            // 看日记这一层也滑进来
+            Box(modifier = Modifier.fillMaxSize().then(overlayEnter())) {
+            // 编辑态按返回先退出编辑，否则退回日历
+            BackHandler {
+                if (diaryEditing) diaryEditing = false else viewDate = null
+            }
             val moodEntry = moodMap[dateKey]
             DiaryViewScreen(
                 dateKey = dateKey,
                 entry = entry,
                 editing = diaryEditing,
-                onEditingChange = { diaryEditing = it },
+                onEditingChange = {
+                    // 退出编辑 = 放弃，改标签的草稿也一起丢掉
+                    if (!it) {
+                        draftMood = null
+                        draftTags = null
+                    }
+                    diaryEditing = it
+                },
                 tags = buildList {
-                    val saved = moodEntry?.tags.orEmpty()
+                    // 有草稿就先显示草稿，存没存看有没有点保存
+                    val saved = draftTags ?: moodEntry?.tags.orEmpty()
                     saved.firstOrNull()?.let { add(it) }
-                    moodEntry?.mood?.let { Mood.of(it) }?.let { add(it.label) }
+                    val moodKey = draftMood ?: moodEntry?.mood
+                    moodKey?.let { Mood.of(it) }?.let { add(it.label) }
                     saved.drop(1).forEach { add(it) }
                 },
-                onSave = { title, text, images ->
+                onSave = { title, text, images, audios ->
                     onUpdateEntry(
                         entry.copy(
                             summary = title.trim(),
                             text = text.trim(),
-                            images = images
+                            images = images,
+                            audio = audios
                         )
                     )
+                    // 改标签选的东西跟着这一下保存一起落到库里
+                    if (draftMood != null || draftTags != null) {
+                        val moodKey = draftMood
+                        if (moodEntry != null) {
+                            onUpdateEntry(
+                                moodEntry.copy(
+                                    mood = moodKey ?: moodEntry.mood,
+                                    score = moodKey?.let { Mood.of(it)?.score } ?: moodEntry.score,
+                                    tags = draftTags ?: moodEntry.tags
+                                )
+                            )
+                        } else {
+                            moodKey?.let { Mood.of(it) }?.let {
+                                // 这天还没记过心情，点保存时顺手建一条
+                                onQuickCheckIn(it, "", dateKey, draftTags.orEmpty())
+                            }
+                        }
+                        draftMood = null
+                        draftTags = null
+                    }
                 },
                 onChangeTags = {
                     viewDate = null
@@ -294,14 +400,25 @@ fun MoodScreen(
                     diaryEditing = false
                 }
             )
+            }
         }
     }
 
     tagDate?.let { dateKey ->
+        // 改标签那一层也滑进来
+        Box(modifier = Modifier.fillMaxSize().then(overlayEnter())) {
+        // 改标签流程按返回 → 回到日记页，半路选的作废
+        BackHandler {
+            tagDate = null
+            draftMood = null
+            draftTags = null
+            tagFlowDate = null
+            viewDate = dateKey
+        }
         MoodWizard(
             dateKey = dateKey,
             existing = moodMap[dateKey],
-            mood = moodMap[dateKey]?.mood?.let { Mood.of(it) },
+            mood = (draftMood ?: moodMap[dateKey]?.mood)?.let { Mood.of(it) },
             onUpdateEntry = onUpdateEntry,
             onAddDiary = onAddDiary,
             onBackToMood = {
@@ -311,12 +428,17 @@ fun MoodScreen(
                 pickerDate = dateKey
             },
             tagFlow = true,
+            onTagsSubmit = { tags ->
+                // 选完了：带回日记页，等点保存才存
+                draftTags = tags
+            },
             onClose = {
                 tagDate = null
                 tagFlowDate = null
                 viewDate = dateKey
             }
         )
+        }
     }
 }
 
@@ -328,14 +450,17 @@ private fun DiaryViewScreen(
     editing: Boolean,
     onEditingChange: (Boolean) -> Unit,
     tags: List<String>,
-    onSave: (String, String, List<String>) -> Unit,
+    onSave: (String, String, List<String>, List<String>) -> Unit,
     onChangeTags: () -> Unit,
     onBack: () -> Unit
 ) {
     val c = LocalAppColors.current
-    var title by remember(dateKey, entry.summary) { mutableStateOf(entry.summary) }
-    var text by remember(dateKey, entry.text) { mutableStateOf(entry.text) }
-    var images by remember(dateKey) { mutableStateOf(entry.imageList) }
+    val context = LocalContext.current
+    // 进出编辑都回到「已存下的内容」：没点保存的改动不留在页面上
+    var title by remember(dateKey, editing, entry.summary) { mutableStateOf(entry.summary) }
+    var text by remember(dateKey, editing, entry.text) { mutableStateOf(entry.text) }
+    var images by remember(dateKey, editing) { mutableStateOf(entry.imageList) }
+    var audios by remember(dateKey, editing) { mutableStateOf(entry.audioList) }
     // 看大图：存下标，-1 表示没打开
     var previewIndex by remember { mutableIntStateOf(-1) }
 
@@ -344,15 +469,22 @@ private fun DiaryViewScreen(
     val dateText = "${cal.get(Calendar.MONTH) + 1}月${cal.get(Calendar.DAY_OF_MONTH)}日"
     val weekText = "星期${weekDays[cal.get(Calendar.DAY_OF_WEEK) - 1]}"
 
+    // 退出编辑：改动全部丢掉，临时录的语音、临时选的图也一起清掉
+    fun discard() {
+        audios.filterNot { it in entry.audioList }.forEach { AudioStore.delete(context, it) }
+        images.filterNot { it in entry.imageList }.forEach { ImageStore.delete(context, it) }
+        onEditingChange(false)
+    }
+
+    // 编辑态按手机返回键：只退出编辑回到查看页，改动不存
+    BackHandler(enabled = editing) { discard() }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(c.bg)
-            .windowInsetsPadding(
-                WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                )
-            )
+            // 键盘弹出时整页跟着上移，编辑日记能看到光标
+            .imeAwareBottomPadding()
             .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp)
     ) {
         Row(
@@ -364,7 +496,10 @@ private fun DiaryViewScreen(
                     .size(36.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(c.cardAlt)
-                    .clickable { onBack() },
+                    .clickable {
+                        // 编辑态按返回 = 回到查看页，改动不存；要留着就点右上角「保存」
+                        if (editing) discard() else onBack()
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text("\u2039", fontSize = 18.sp, color = c.inkSoft)
@@ -387,8 +522,9 @@ private fun DiaryViewScreen(
                     .clip(RoundedCornerShape(12.dp))
                     .background(c.cardAlt)
                     .clickable {
+                        // 只有点这里才真的存下来
                         if (editing) {
-                            onSave(title, text, images)
+                            onSave(title, text, images, audios)
                             onEditingChange(false)
                         } else {
                             onEditingChange(true)
@@ -407,7 +543,19 @@ private fun DiaryViewScreen(
 
         Spacer(Modifier.height(12.dp))
 
-                if (editing) {
+                // 内容可滚动：键盘弹出或配图多时，都能滚到输入框
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                // 编辑 ↔ 查看：标题和正文都淡着换，不做画面闪变
+                AnimatedContent(
+                    targetState = editing,
+                    transitionSpec = { fadeTransition() },
+                    label = "diaryTitleSwitch"
+                ) { ed ->
+                if (ed) {
                     OutlinedTextField(
                         value = title,
                         onValueChange = { title = it },
@@ -445,6 +593,7 @@ private fun DiaryViewScreen(
                         textAlign = TextAlign.Center
                     )
                 }
+                }
 
                 // 标签放在标题和正文之间
                 if (tags.isNotEmpty()) {
@@ -466,6 +615,21 @@ private fun DiaryViewScreen(
                             }
                         }
                     }
+                }
+                // 改标签只在编辑时出现，看日记的时候不显示
+                if (editing) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "\uD83C\uDFF7 改标签",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.accent,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(50))
+                            .clickable { onChangeTags() }
+                            .padding(vertical = 4.dp),
+                        textAlign = TextAlign.Center
+                    )
                 }
 
                 // 配图：编辑时可增删，平时只看
@@ -495,13 +659,19 @@ private fun DiaryViewScreen(
                     Spacer(Modifier.height(10.dp))
                 }
 
-                if (editing) {
+                // 正文：输入时是一整块输入框，存下来后变成卡片，两者淡着切换
+                AnimatedContent(
+                    targetState = editing,
+                    transitionSpec = { fadeTransition() },
+                    label = "diaryBodySwitch"
+                ) { ed ->
+                if (ed) {
                     OutlinedTextField(
                         value = text,
                         onValueChange = { text = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f),
+                            .heightIn(min = 180.dp),
                         shape = RoundedCornerShape(16.dp),
                         placeholder = {
                             Text(
@@ -524,13 +694,12 @@ private fun DiaryViewScreen(
                         )
                     )
                 } else {
+                    // 外层已经可以滚动，这里只是个卡片
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
                             .clip(RoundedCornerShape(16.dp))
                             .background(c.card)
-                            .verticalScroll(rememberScrollState())
                             .padding(16.dp)
                     ) {
                         Text(
@@ -541,6 +710,18 @@ private fun DiaryViewScreen(
                         )
                     }
                 }
+                }
+
+                // 语音：编辑时录，查看时点一下就能听
+                if (editing || audios.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    AudioSection(
+                        files = audios,
+                        editing = editing,
+                        onAdd = { audios = audios + it },
+                        onDelete = { name -> audios = audios - name }
+                    )
+                }
 
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -550,19 +731,7 @@ private fun DiaryViewScreen(
                     modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.End
                 )
-        if (editing) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "改标签",
-                style = MaterialTheme.typography.labelMedium,
-                color = c.accent,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onChangeTags() }
-                    .padding(vertical = 8.dp),
-                textAlign = TextAlign.Center
-            )
-        }
+                }
 
         if (previewIndex in images.indices) {
             ImageViewer(
@@ -668,6 +837,8 @@ private fun MoodCirclePicker(
                 ((if (maxWidth < maxHeight) maxWidth else maxHeight) / 2 - outerSpace).toPx()
             }
             val radiusInner = radiusPx * 0.55f
+            // 整圈往上挪一点，给下面的「确定」留位置
+            val offsetUp = with(density) { 30.dp.toPx() }
 
             // 27 颗手绘表情：内圈 11 颗常用，外圈 16 颗
             val inner = moodStickers.take(11)
@@ -677,7 +848,7 @@ private fun MoodCirclePicker(
                     val angle = (index * 360f / stickers.size) - 90f
                     val radian = Math.toRadians(angle.toDouble())
                     val x = radius * cos(radian).toFloat()
-                    val y = radius * sin(radian).toFloat()
+                    val y = radius * sin(radian).toFloat() - offsetUp
                     val mood = st.mood
                     val picked = selectedMood == mood
                     Box(
@@ -695,8 +866,8 @@ private fun MoodCirclePicker(
                                 shape = CircleShape
                             )
                             .clickable {
+                                // 先只选中，点下面「确定」才真的记下来
                                 selectedMood = mood
-                                onPick(mood)
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -711,16 +882,25 @@ private fun MoodCirclePicker(
                 }
             }
 
-            // 圆心：提示当前选了哪种心情
+            // 圆心：提示当前选了哪种心情（跟着圆一起上移）
             Text(
                 selectedMood?.label ?: "点一个表情",
                 style = MaterialTheme.typography.labelMedium,
                 color = if (selectedMood != null) c.ink else c.inkSoft,
-                modifier = Modifier.align(Alignment.Center)
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset { IntOffset(0, -offsetUp.roundToInt()) }
             )
         }
 
-        Spacer(Modifier.height(20.dp))
+        // 选好心情后点确定，再进入下一步
+        PrimaryButton(
+            text = if (selectedMood != null) "确定 · ${selectedMood!!.label}" else "确定",
+            onClick = { selectedMood?.let { onPick(it) } },
+            enabled = selectedMood != null,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -797,16 +977,20 @@ private fun MoodCalendarGrid(
                             ) {
                                 when {
                                     mood != null -> {
-                                        // 日历上直接用手绘的那张表情
+                                        // 日历上直接用手绘的那张表情（记住的时候冒出来一下）
                                         val res = stickerOf(mood)
                                         if (res != null) {
                                             Image(
                                                 painter = painterResource(res),
                                                 contentDescription = mood.label,
-                                                modifier = Modifier.size(40.dp)
+                                                modifier = Modifier.size(40.dp).then(popIn())
                                             )
                                         } else {
-                                            Text(mood.emoji, fontSize = 34.sp)
+                                            Text(
+                                                mood.emoji,
+                                                fontSize = 34.sp,
+                                                modifier = popIn()
+                                            )
                                         }
                                     }
                                     hasDiary -> Box(
@@ -814,8 +998,13 @@ private fun MoodCalendarGrid(
                                             .size(8.dp)
                                             .clip(CircleShape)
                                             .background(c.accent.copy(alpha = 0.5f))
+                                            .then(popIn())
                                     )
-                                    isToday -> Text("\u2B50", fontSize = 14.sp)
+                                    isToday -> Text(
+                                        "\u2B50",
+                                        fontSize = 14.sp,
+                                        modifier = popIn()
+                                    )
                                 }
                             }
                         }

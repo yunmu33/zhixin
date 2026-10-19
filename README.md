@@ -12,11 +12,11 @@
 
 | 页签 | 内容 |
 |---|---|
-| 🏠 主页 | 热度总览、三个打卡入口（日日新 / 任务打卡 / 心情打卡）、小屋书桌 |
-| 📅 日历 | 月历打卡色块、近 30 天情绪趋势、心情分布、年度热力图（日 / 周 / 月 / 年视图切换） |
+| 🎯 任务 | 自建打卡任务（阅读 / 运动…），每天打一次卡，每个任务有自己的热度日历 |
+| 🗓 待办 | 按天记录的待办清单，可以翻到其他日期补看 |
 | 🌱 日日新 | 每天记一条新收获，哪怕一句话，随机灵感例子，连续记录火花 |
-| 📔 小屋日记 | 全部日记，支持心情筛选、分类筛选、搜索、编辑、回收站 |
-| 👤 我的 | 头像昵称签名、数据概览、小屋设置入口、成就徽章、数据备份 |
+| 😊 心情日记 | 27 种手绘心情打卡，配月历；写的日记支持心情 / 分类筛选、搜索、编辑、回收站 |
+| 👤 我的 | 头像昵称签名、等级明示、数据概览、成就徽章、小屋设置、数据备份 |
 
 ### 🌱 日日新
 
@@ -56,16 +56,43 @@
 
 ### ⚙️ 小屋设置
 
-- 分组卡片式设计：外观与展示、陪伴与提醒、安全与数据、AI 整理、关于知新
+- 分组卡片式设计：外观与皮肤、使用设置（提醒 / 标签 / 密码锁 / AI）、安全与数据、AI 整理、关于知新
 - 入口在「我的」页面
+
+#### 每日记录提醒
+
+- 时间用**上下滑动的滚轮**挑，小时 23 之后接着 0、分钟 59 之后接着 0（循环滚动）
+- **循环方式**滚轮：🔁 每天 / 💼 工作日 / 🌴 周末 / 📅 每周（选「每周」时多出一个星期滚轮）
+- 「下次提醒」按循环规则算：同一天显示「今天 02:00」、明天显示「明天 02:00」、更远显示星期，例如「周五 02:00」
+- 到点响完会按规则自动排下一次（比如只工作日提醒，周五响完排到下周一）；手机重启后也会重新排上
+- ⚠️ 在系统设置里对 App 点了「**强制停止**」，Android 会把排好的闹钟全部清掉，得重新打开一次 App 才会再排上
+
+---
+
+## 隐私与数据
+
+- 所有记录写在 App 私有目录的 `files/mood_house.json` 里，**没有任何云端同步**
+- 唯一的联网行为是 **AI 整理**：只有在「AI 分析」里填了 API Key 并保存之后，才会把**当前正在写的这一篇**（正文 + 选的心情）发到你填的那个接口；不填 Key 就完全离线，改走本地模板兜底（输出格式和 AI 版一致）
+- API Key 明文存在本机的 SharedPreferences 里
+- 「导出」会把全部记录写成一个 JSON 备份文件，「导入」可以把它导回来（按 id 去重）
 
 ---
 
 ## 版本
 
-当前版本：**v1.3.0**（`versionCode = 3`，`versionName = "1.3.0"`，见 `app/build.gradle.kts`）。
+当前版本：**v1.4.0**（`versionCode = 4`，`versionName = "1.4.0"`，见 `app/build.gradle.kts`）。
 
 应用内「设置 → 关于知新」显示当前版本号（读取 `BuildConfig.VERSION_NAME`，改一处即可）。
+
+### v1.4.0 更新日志
+
+- 🏅 **等级明示**：「我的」页删掉了原来那条细进度条，换成大图标 + `Lv.x` 徽章 + 等级名 + **百分比**；进度条打开页面时自己涨到当前进度，下面写明「离「温热」还差 38 热度 · 到 60 就升级」
+- 🪜 **各等级挪进「我的信息」**：六级阶梯全部列出，已点亮打 ✓、当前这级高亮描边并标「当前」、没到的显示 🔒 和门槛热度。「我的」页只留等级明示，不占地方
+- 🔁 **提醒支持循环方式**：每天 / 工作日 / 周末 / 每周，跟时间滚轮一样上下滑着选；选「每周」时右边自动多出一个星期滚轮
+- 🕐 **「下次提醒」跟着循环方式变**：同一天显示「今天 02:00」、明天显示「明天 02:00」、更远显示「周五 02:00」这种具体星期
+- ♾️ **提醒时间滚轮改成循环**：小时 23 之后接着 0，分钟 59 之后接着 0，两头都滑不到头
+- 🤖 **修好 AI 预设按钮**：以前点预设（OpenAI / DeepSeek / 通义千问 / Ollama 本地）只是填进输入框却不保存、选中态也不动，看着像坏了；现在点一下立即切换接口与模型，并提示「已切到「通义千问」· 模型 qwen-plus」
+- 🧱 数据层：新增循环规则 `RemindRepeat` 与「下一次提醒时间」计算（只工作日提醒时，周五响完自动排到下周一）；等级表整理成公开的 `Heat.LEVELS`
 
 ### v1.3.0 更新日志
 
@@ -100,8 +127,8 @@
 1. 修改 `app/build.gradle.kts`：
 
 ```kotlin
-versionCode = 4        // 必须 +1（或更大）
-versionName = "1.4.0"  // 同步更新
+versionCode = 5        // 必须 +1（或更大）
+versionName = "1.5.0"  // 同步更新
 ```
 
 2. 打包：
@@ -137,14 +164,16 @@ adb install app-release.apk
 
 ```
 app/src/main/java/com/example/zhixin/
-├── data/           数据层：Entry 模型、日期工具 DateKey、热度计算 Heat、偏好 Prefs、存储 Store、
-│   │               账号 Account、图片存储 ImageStore、Mood 枚举（27 种心情）
-├── notify/         每日打卡提醒
-├── ai/             AI 整理小结（可选，填 Key 后用）
+├── data/           数据层：Entry 模型、日期工具 DateKey、热度与等级 Heat、偏好 Prefs、存储 Store、
+│   │               账号 Account、图片存储 ImageStore、Mood 枚举（27 种心情）、
+│   │               提醒循环规则 RemindRepeat
+├── notify/         每日打卡提醒：ReminderReceiver（闹钟 / 通知 / 到点续排）、ReminderHelper
+├── ai/             AI 整理小结（可选，填 Key 后用；没填 Key 走本地模板）
 ├── ui/
-│   ├── components/ 通用组件：SoftCard、StatCard、PrimaryButton、Chips、图表、月历
-│   ├── screens/    各个页面：HomeScreen、CalendarScreen、NewScreen、CollectScreen、
-│   │               MoodScreen、MineScreen、ProfileScreen、SettingsScreen…
+│   ├── components/ 通用组件：SoftCard、StatCard、PrimaryButton、Chips、图表、月历、
+│   │               等级明示与各等级阶梯 LevelBlocks
+│   ├── screens/    各个页面：TasksScreen、TodoScreen、NewScreen、MoodScreen、MineScreen、
+│   │               ProfileScreen、SettingsScreen、TaskHeatScreen、AchievementScreen…
 │   ├── theme/      主题、皮肤、配色、心情表情素材映射 MoodIcons
 │   └── AppRoot.kt  全局路由与五个页签
 └── MainActivity.kt

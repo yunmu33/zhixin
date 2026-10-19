@@ -29,11 +29,16 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +46,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -58,6 +65,7 @@ import com.example.zhixin.data.Heat
 import com.example.zhixin.data.ImageStore
 import com.example.zhixin.data.Store
 import com.example.zhixin.ui.components.CardShape
+import com.example.zhixin.ui.components.CheckInSuccessDialog
 import com.example.zhixin.ui.components.ChipShape
 import com.example.zhixin.ui.components.HeatBar
 import com.example.zhixin.ui.components.ImageThumb
@@ -66,7 +74,9 @@ import com.example.zhixin.ui.components.ScreenTopBar
 import com.example.zhixin.ui.components.SectionTitle
 import com.example.zhixin.ui.components.SoftCard
 import com.example.zhixin.ui.components.TinyButton
+import androidx.compose.animation.AnimatedContent
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dateTransition
 
 /** 一次打卡最多带几张图。 */
 private const val MAX_IMAGES = 6
@@ -76,10 +86,11 @@ private const val MAX_IMAGES = 6
  *  - 上半：日期日历，可选要打卡的日子（不支持未来）
  *  - 下半：选中那天的所有自定义任务 → 勾选 / 取消
  *  - 写一句打卡总结（可选）+ 上传图片（可选，最多 6 张）
- *  - 点"打卡"提交 → 展示"这项内容打卡成功"
+ *  - 点"打卡"立刻弹窗说"打卡成功"，里面可以再"写点什么"，点确定收尾
  *
  *  onSubmit 一次性收：(dateKey, summary, newCompletedItems, images)，
  *  由 AppRoot 统一入库，图片文件名随 Entry 一起存 JSON。
+ *  onAddNote 是成功弹窗里补写的那句话：(dateKey, text)。
  */
 @Composable
 fun TaskCheckInScreen(
@@ -93,6 +104,9 @@ fun TaskCheckInScreen(
         newCompletedItems: List<CustomItem>,
         images: List<String>
     ) -> Unit,
+    onAddNote: (dateKey: String, text: String) -> Unit,
+    /** 页面上「打卡内容编辑」开关：关掉后打卡不弹窗。 */
+    onNotePromptChange: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     val c = LocalAppColors.current
@@ -108,12 +122,17 @@ fun TaskCheckInScreen(
 
     val selectedMillis = DateKey.toMillis(selectedDate)
     val dayGap = DateKey.daysBetween(selectedMillis, now)
-    val dateLabel = when (dayGap) {
-        0 -> "今天"
-        1 -> "昨天"
-        2 -> "前天"
-        else -> DateKey.monthDayLabel(selectedMillis) + " " + DateKey.weekdayLabel(selectedMillis)
+    /** 日期的说法：今天 / 昨天 / 前天 / 具体日期。切日期时动画里要用。 */
+    fun labelOf(key: String): String {
+        val millis = DateKey.toMillis(key)
+        return when (DateKey.daysBetween(millis, now)) {
+            0 -> "今天"
+            1 -> "昨天"
+            2 -> "前天"
+            else -> DateKey.monthDayLabel(millis) + " " + DateKey.weekdayLabel(millis)
+        }
     }
+    val dateLabel = labelOf(selectedDate)
     val selectedHeat = remember(entries, selectedDate) { Heat.dayHeat(entries, selectedDate) }
     val isFuture = selectedDate > todayKey
 
@@ -132,7 +151,9 @@ fun TaskCheckInScreen(
     }
 
     var summary by remember { mutableStateOf("") }
-    var done by remember { mutableStateOf(false) }
+    // 打卡成功弹窗：一点打卡就弹，里面还能再补一句
+    var showSuccess by remember { mutableStateOf(false) }
+    var successNames by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // ── 图片：文件名列表（文件已复制到私有目录）──
     val images = remember { mutableStateListOf<String>() }
@@ -154,10 +175,6 @@ fun TaskCheckInScreen(
         Toast.makeText(context, "已添加 ${uris.take(room).size} 张图 🖼", Toast.LENGTH_SHORT).show()
     }
 
-    // 提交后成功卡要展示的内容快照
-    var successSummary by remember { mutableStateOf("") }
-    var successNames by remember { mutableStateOf<List<String>>(emptyList()) }
-    var successImages by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // 顶栏固定在上面，只有下面的内容滚动
     Column(
@@ -183,20 +200,28 @@ fun TaskCheckInScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("\uD83D\uDCC5", fontSize = 18.sp)
                 Spacer(Modifier.width(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                // 换一天时这几行滑着换（往后一天往左滑）
+                AnimatedContent(
+                    targetState = selectedDate,
+                    transitionSpec = { dateTransition(targetState > initialState) },
+                    modifier = Modifier.weight(1f),
+                    label = "checkInDay"
+                ) {
+                Column {
                     Text(
-                        "正在给$dateLabel 打卡",
+                        "正在给${labelOf(it)} 打卡",
                         style = MaterialTheme.typography.titleSmall,
                         color = c.ink
                     )
                     Text(
-                        "${DateKey.monthDayLabel(selectedMillis)} " +
-                            "${DateKey.weekdayLabel(selectedMillis)}" +
+                        "${DateKey.monthDayLabel(DateKey.toMillis(it))} " +
+                            "${DateKey.weekdayLabel(DateKey.toMillis(it))}" +
                             if (selectedHeat > 0) " · 当天热度 \uD83D\uDD25$selectedHeat"
                             else " · 这天还没打卡",
                         style = MaterialTheme.typography.labelSmall,
                         color = c.inkSoft
                     )
+                }
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -207,18 +232,13 @@ fun TaskCheckInScreen(
             ) {
                 TinyButton(text = "‹ 前一天", onClick = {
                     selectedDate = DateKey.fromMillis(DateKey.addDays(selectedMillis, -1))
-                    done = false
                 })
                 if (selectedDate != todayKey) {
-                    TinyButton(text = "回到今天", onClick = {
-                        selectedDate = todayKey
-                        done = false
-                    })
+                    TinyButton(text = "回到今天", onClick = { selectedDate = todayKey })
                 }
                 if (selectedDate < todayKey) {
                     TinyButton(text = "后一天 ›", onClick = {
                         selectedDate = DateKey.fromMillis(DateKey.addDays(selectedMillis, 1))
-                        done = false
                     })
                 }
             }
@@ -233,25 +253,7 @@ fun TaskCheckInScreen(
         }
 
         // ── 下半：选择打卡内容 / 输入 / 图片 / 提交 ──
-        if (done) {
-            TaskCheckSuccessCard(
-                dateLabel = dateLabel,
-                dateDesc = DateKey.monthDayLabel(selectedMillis),
-                summary = successSummary,
-                doneNames = successNames,
-                images = successImages,
-                streak = streak,
-                totalHeat = totalHeat,
-                progress = heatProgress,
-                onBackHome = onBack,
-                onContinue = {
-                    done = false
-                    summary = ""
-                    images.clear()
-                }
-            )
-        } else {
-            SoftCard {
+        SoftCard {
                 SectionTitle(
                     emoji = "\uD83C\uDFAF",
                     title = "$dateLabel 要打卡的内容",
@@ -260,6 +262,41 @@ fun TaskCheckInScreen(
                     else
                         "点一下勾选 / 取消，已经打过的会自带勾选 ✨"
                 )
+                Spacer(Modifier.height(10.dp))
+
+                // 打卡后弹不弹窗写内容：关掉就打完直接过
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "\uD83D\uDCDD 打卡内容编辑",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = c.ink
+                        )
+                        Text(
+                            if (settings.checkNotePrompt) {
+                                "开启：打卡后弹窗，可以写点什么"
+                            } else {
+                                "关闭：点打卡直接打上，不弹窗"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.inkSoft
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Switch(
+                        checked = settings.checkNotePrompt,
+                        onCheckedChange = onNotePromptChange,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = c.accent,
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = c.line
+                        )
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
 
                 if (settings.customItems.isEmpty()) {
@@ -455,11 +492,22 @@ fun TaskCheckInScreen(
                             val newItems = doneNames
                                 .filter { !selectedCustomDone.contains(it) }
                                 .map { name -> settings.customItems.first { it.name == name } }
-                            successSummary = summary.trim()
-                            successNames = doneNames
-                            successImages = images.toList()
                             onSubmit(selectedDate, summary.trim(), newItems, images.toList())
-                            done = true
+                            // 页面开关 + 任务自己的开关都开着才弹窗，否则打完直接回去
+                            val wantWrite =
+                                settings.checkNotePrompt &&
+                                    (doneNames.isEmpty() || doneNames.any { name ->
+                                        settings.customItems
+                                            .firstOrNull { it.name == name }
+                                            ?.noteEditable != false
+                                    })
+                            if (wantWrite) {
+                                successNames = doneNames
+                                showSuccess = true
+                            } else {
+                                Toast.makeText(context, "打卡完成 ✓", Toast.LENGTH_SHORT).show()
+                                onBack()
+                            }
                         }
                     )
                 }
@@ -467,116 +515,26 @@ fun TaskCheckInScreen(
         }
 
         Spacer(Modifier.height(12.dp))
-        }
+    }
+
+    // 打卡成功弹窗
+    if (showSuccess) {
+        CheckInSuccessDialog(
+            subtitle = "$dateLabel · ${DateKey.monthDayLabel(selectedMillis)}",
+            doneNames = successNames,
+            onConfirm = { note ->
+                showSuccess = false
+                if (note.isNotBlank()) onAddNote(selectedDate, note)
+                onBack()
+            },
+            onDismiss = {
+                showSuccess = false
+                onBack()
+            }
+        )
     }
 }
 
 
 
-@Composable
-private fun TaskCheckSuccessCard(
-    dateLabel: String,
-    dateDesc: String,
-    summary: String,
-    doneNames: List<String>,
-    images: List<String>,
-    streak: Int,
-    totalHeat: Int,
-    progress: Float,
-    onBackHome: () -> Unit,
-    onContinue: () -> Unit
-) {
-    val c = LocalAppColors.current
-    val context = LocalContext.current
-    SoftCard {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("\uD83C\uDF89", fontSize = 52.sp)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "打卡成功！",
-                style = MaterialTheme.typography.headlineSmall,
-                color = c.ink
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "$dateLabel · $dateDesc",
-                style = MaterialTheme.typography.labelMedium,
-                color = c.inkSoft
-            )
-            Spacer(Modifier.height(10.dp))
-            if (doneNames.isNotEmpty()) {
-                Text(
-                    "这项内容已打卡 ✓",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = c.inkSoft
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    doneNames.joinToString(" · "),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = c.accent,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(8.dp))
-            }
-            if (summary.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(c.cardAlt)
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
-                ) {
-                    Text("「$summary」", style = MaterialTheme.typography.bodyMedium, color = c.ink)
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-            if (images.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    images.chunked(3).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.forEach { name ->
-                                val bitmap = remember(name) {
-                                    ImageStore.loadBitmap(context, name, 360)
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .aspectRatio(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(c.cardAlt)
-                                ) {
-                                    if (bitmap != null) {
-                                        Image(
-                                            bitmap = bitmap.asImageBitmap(),
-                                            contentDescription = "打卡配图",
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                }
-                            }
-                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-            HeatBar(progress = progress)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "\uD83D\uDD25 连续打卡 ${streak} 天 · 累计热度 ${totalHeat}",
-                style = MaterialTheme.typography.labelSmall,
-                color = c.inkSoft
-            )
-            Spacer(Modifier.height(18.dp))
-            PrimaryButton(text = "回任务主页", onClick = onBackHome)
-            Spacer(Modifier.height(10.dp))
-            TinyButton(text = "再打一次", onClick = onContinue)
-        }
-    }
-}
+

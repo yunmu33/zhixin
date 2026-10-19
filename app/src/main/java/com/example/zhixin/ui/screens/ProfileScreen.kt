@@ -49,11 +49,14 @@ import com.example.zhixin.data.Heat
 import com.example.zhixin.data.ImageStore
 import com.example.zhixin.data.Store
 import com.example.zhixin.ui.components.ChipShape
+import com.example.zhixin.ui.components.LevelLadderCard
+import com.example.zhixin.ui.components.LevelNowBlock
 import com.example.zhixin.ui.components.ScreenTopBar
 import com.example.zhixin.ui.components.SoftCard
 import com.example.zhixin.ui.components.StatCard
 import com.example.zhixin.ui.components.TinyButton
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dialogEnter
 
 /**
  * 用户信息页：点「我的」的头像进来。
@@ -206,27 +209,12 @@ fun ProfileScreen(
                     StatCard("\uD83C\uDF31", "${newCount}条", "新收获", Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(c.cardAlt)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "${Heat.levelEmoji(totalHeat)} 当前等级：${Heat.levelName(totalHeat)}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = c.ink,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        String.format("%,d", totalHeat),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = c.accent
-                    )
-                }
+                // 等级明示：现在哪一级、攒了多少、离下一级还差多少
+                LevelNowBlock(totalHeat = totalHeat)
             }
+
+            // 各等级：要多少热度才能到，哪些已经点亮
+            LevelLadderCard(totalHeat = totalHeat)
 
             // 账号
             SoftCard {
@@ -258,6 +246,7 @@ fun ProfileScreen(
 
     if (emojiPicker) {
         AlertDialog(
+            modifier = dialogEnter(),
             onDismissRequest = { emojiPicker = false },
             containerColor = c.card,
             shape = RoundedCornerShape(24.dp),

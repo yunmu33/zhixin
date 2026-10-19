@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,7 +47,16 @@ import com.example.zhixin.data.DateKey
 import com.example.zhixin.data.Entry
 import com.example.zhixin.ui.components.ScreenTopBar
 import com.example.zhixin.ui.components.SoftCard
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dateTransition
+import com.example.zhixin.ui.theme.fadeTransition
 import java.util.Calendar
 
 private enum class HeatView(val label: String) { WEEK("周"), MONTH("月"), YEAR("年") }
@@ -114,17 +124,7 @@ fun TaskHeatScreen(
     }
 
     // 标题：三种视图各自的写法
-    val rangeLabel = remember(view, anchor) {
-        when (view) {
-            HeatView.WEEK -> {
-                val s = weekStart(anchor)
-                val e = DateKey.addDays(s, 6)
-                "${DateKey.monthDayLabel(s)} - ${DateKey.monthDayLabel(e)}"
-            }
-            HeatView.MONTH -> "${DateKey.yearOf(anchor)}年${DateKey.monthOf(anchor) + 1}月"
-            HeatView.YEAR -> "${DateKey.yearOf(anchor)}年"
-        }
-    }
+
 
     fun shift(delta: Int) {
         anchor = when (view) {
@@ -180,11 +180,21 @@ fun TaskHeatScreen(
                             contentAlignment = Alignment.Center
                         ) { Text("‹", fontSize = 18.sp, color = c.ink) }
                         Spacer(Modifier.weight(1f))
-                        Text(
-                            rangeLabel,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = c.ink
-                        )
+                        // 翻页时「几年几月」这几个字跟着一起滑
+                        AnimatedContent(
+                            targetState = view to anchor,
+                            transitionSpec = {
+                                if (targetState.first != initialState.first) fadeTransition()
+                                else dateTransition(targetState.second > initialState.second)
+                            },
+                            label = "heatRangeLabel"
+                        ) { (v, a) ->
+                            Text(
+                                heatRangeLabel(v, a),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = c.ink
+                            )
+                        }
                         Spacer(Modifier.weight(1f))
                         Box(
                             modifier = Modifier
@@ -227,26 +237,36 @@ fun TaskHeatScreen(
                         vertical = 14.dp
                     )
                 ) {
-                    when (view) {
+                    // 切视图淡着换，翻页（上一周 / 上一月 / 上一年）横着滑
+                    AnimatedContent(
+                        targetState = view to anchor,
+                        transitionSpec = {
+                            if (targetState.first != initialState.first) fadeTransition()
+                            else dateTransition(targetState.second > initialState.second)
+                        },
+                        label = "heatBoard"
+                    ) { (v, a) ->
+                    when (v) {
                         HeatView.WEEK -> WeekBoard(
-                            startMillis = weekStart(anchor),
+                            startMillis = weekStart(a),
                             countByDay = countByDay,
                             todayKey = todayKey,
                             picked = pickedDay
                         ) { pickedDay = if (pickedDay == it) null else it }
                         HeatView.MONTH -> MonthBoard(
-                            year = DateKey.yearOf(anchor),
-                            month = DateKey.monthOf(anchor),
+                            year = DateKey.yearOf(a),
+                            month = DateKey.monthOf(a),
                             countByDay = countByDay,
                             todayKey = todayKey,
                             picked = pickedDay
                         ) { pickedDay = if (pickedDay == it) null else it }
                         HeatView.YEAR -> YearBoard(
-                            year = DateKey.yearOf(anchor),
+                            year = DateKey.yearOf(a),
                             countByDay = countByDay,
                             todayKey = todayKey,
                             picked = pickedDay
                         ) { pickedDay = if (pickedDay == it) null else it }
+                    }
                     }
                     // 日历和下面的图例隔开，别让两片颜色贴在一起
                     Spacer(Modifier.height(12.dp))
@@ -281,13 +301,33 @@ fun TaskHeatScreen(
             }
 
             // 选中某天：下面列出那天完成了什么
-            if (pickedDay != null) {
-                item {
-                    val key = pickedDay!!
-                    val thatDay = taskEntries.filter { it.dateKey == key }
+            item {
+                // 记住最后选的那天：这块退场时 key 已经是 null，拿它顶着别让字闪空
+                var lastKey by remember { mutableStateOf<String?>(null) }
+                // 第一次点格子：这块自己浮出来；再点一天换成那天的清单
+                AnimatedVisibility(
+                    visible = pickedDay != null,
+                    enter = expandVertically(tween(220)) + fadeIn(tween(220)),
+                    exit = shrinkVertically(tween(180)) + fadeOut(tween(180))
+                ) {
+                    AnimatedContent(
+                        targetState = pickedDay,
+                        transitionSpec = {
+                            val a = initialState
+                            val b = targetState
+                            dateTransition(a != null && b != null && b > a)
+                        },
+                        label = "heatDayDetail"
+                    ) { key ->
+                    SideEffect { if (key != null) lastKey = key }
+                    val dayKey = key ?: lastKey
+                    val thatDay = taskEntries.filter { it.dateKey == dayKey }
                     SoftCard {
                         Text(
-                            "${DateKey.monthDayLabel(DateKey.toMillis(key))} · ${DateKey.weekdayLabel(DateKey.toMillis(key))}",
+                            if (dayKey != null) {
+                                "${DateKey.monthDayLabel(DateKey.toMillis(dayKey))} · " +
+                                    DateKey.weekdayLabel(DateKey.toMillis(dayKey))
+                            } else "选中的那天",
                             style = MaterialTheme.typography.titleSmall,
                             color = c.ink
                         )
@@ -326,12 +366,20 @@ fun TaskHeatScreen(
                             }
                         }
                     }
+                    }
                 }
             }
 
             item {
                 SoftCard {
                     Row(modifier = Modifier.fillMaxWidth()) {
+                        // 翻页 / 切视图时这几个数字淡着换，不硬跳
+                        AnimatedContent(
+                            targetState = view to anchor,
+                            transitionSpec = { fadeTransition() },
+                            modifier = Modifier.weight(1f),
+                            label = "heatRangeStats"
+                        ) {
                         MiniStat(
                             when (view) {
                                 HeatView.WEEK -> "本周打卡"
@@ -341,6 +389,7 @@ fun TaskHeatScreen(
                             "$rangeCount",
                             Modifier.weight(1f)
                         )
+                        }
                         MiniStat("打卡天数", "$rangeDays", Modifier.weight(1f))
                         MiniStat("单日最多", "$rangeBest", Modifier.weight(1f))
                     }
@@ -415,6 +464,17 @@ fun TaskHeatScreen(
             }
         }
     }
+}
+
+/** 标题：三种视图各自的写法（翻页动画里要按目标值现算，所以抽成函数）。 */
+private fun heatRangeLabel(view: HeatView, anchor: Long): String = when (view) {
+    HeatView.WEEK -> {
+        val s = weekStart(anchor)
+        val e = DateKey.addDays(s, 6)
+        "${DateKey.monthDayLabel(s)} - ${DateKey.monthDayLabel(e)}"
+    }
+    HeatView.MONTH -> "${DateKey.yearOf(anchor)}年${DateKey.monthOf(anchor) + 1}月"
+    HeatView.YEAR -> "${DateKey.yearOf(anchor)}年"
 }
 
 /** 当天所在周的周一（毫秒）。 */

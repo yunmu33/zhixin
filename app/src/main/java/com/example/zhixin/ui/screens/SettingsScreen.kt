@@ -41,8 +41,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -53,19 +55,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import com.example.zhixin.ai.AiClient
 import com.example.zhixin.BuildConfig
 import com.example.zhixin.data.AI_PRESETS
 import com.example.zhixin.data.AppSettings
+import com.example.zhixin.data.RemindRepeat
+import com.example.zhixin.data.WEEKDAY_KEYS
+import com.example.zhixin.data.WEEKDAY_LABELS
+import com.example.zhixin.data.weekdayIndex
 import com.example.zhixin.data.DEFAULT_CUSTOM_ITEMS
 import com.example.zhixin.data.DEFAULT_TAGS
 import com.example.zhixin.data.Entry
 import com.example.zhixin.data.Store
 import com.example.zhixin.notify.ReminderReceiver
 import com.example.zhixin.notify.applyReminder
+import com.example.zhixin.notify.hasNotifyPermission
+import com.example.zhixin.notify.isBatteryOptimized
+import com.example.zhixin.notify.nextReminderText
+import com.example.zhixin.notify.notificationsBlocked
+import com.example.zhixin.notify.openBatterySettings
+import com.example.zhixin.notify.openNotificationSettings
 import com.example.zhixin.notify.openExactAlarmSettings
 import com.example.zhixin.ui.components.ChipShape
 import com.example.zhixin.ui.components.ConfirmDialog
@@ -77,6 +93,7 @@ import com.example.zhixin.ui.components.SoftCard
 import com.example.zhixin.ui.components.TagChip
 import com.example.zhixin.ui.components.TinyButton
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dialogEnter
 import com.example.zhixin.ui.theme.SKINS
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.CoroutineScope
@@ -130,6 +147,22 @@ fun SettingsScreen(
     var aiKey by remember(settings) { mutableStateOf(settings.aiKey) }
     var aiModel by remember(settings) { mutableStateOf(settings.aiModel) }
     var aiResult by remember { mutableStateOf("") }
+
+    // 从系统设置页（省电 / 通知）回来时重新看一眼，该消失的提示就消失
+    val view = LocalView.current
+    var resumed by remember { mutableIntStateOf(0) }
+    DisposableEffect(view) {
+        val owner = view.findViewTreeLifecycleOwner()
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) resumed++
+        }
+        owner?.lifecycle?.addObserver(observer)
+        onDispose { owner?.lifecycle?.removeObserver(observer) }
+    }
+    // 提醒有没有被系统拦住、有没有排上
+    var batteryBlocked by remember(resumed) { mutableStateOf(isBatteryOptimized(context)) }
+    var notifyBlocked by remember(resumed) { mutableStateOf(notificationsBlocked(context)) }
+    var scheduled by remember(resumed) { mutableStateOf(ReminderReceiver.isScheduled(context)) }
 
     // 授权成功后再排一次，确保开关打开当天就生效
     var needExactAlarm by remember { mutableStateOf(false) }
@@ -310,6 +343,7 @@ fun SettingsScreen(
                         TimeWheel(
                             values = (0..23).map { String.format("%02d", it) },
                             selected = settings.remindHour,
+                            loop = true,
                             modifier = Modifier.weight(1f)
                         ) { update(settings.copy(remindHour = it)) }
                         Box(
@@ -321,8 +355,57 @@ fun SettingsScreen(
                         TimeWheel(
                             values = (0..59).map { String.format("%02d", it) },
                             selected = settings.remindMinute,
+                            loop = true,
                             modifier = Modifier.weight(1f)
                         ) { update(settings.copy(remindMinute = it)) }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🔁", fontSize = 20.sp)
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "循环",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = c.ink
+                            )
+                            Text(
+                                RemindRepeat.of(settings.remindRepeat).hint,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = c.inkSoft
+                            )
+                        }
+                        Text(
+                            "上下滑着选",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.inkSoft
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(132.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(c.cardAlt)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TimeWheel(
+                            values = RemindRepeat.ALL.map { "${it.emoji} ${it.label}" },
+                            selected = RemindRepeat.ALL
+                                .indexOf(RemindRepeat.of(settings.remindRepeat))
+                                .coerceAtLeast(0),
+                            modifier = Modifier.weight(1f)
+                        ) { i -> update(settings.copy(remindRepeat = RemindRepeat.ALL[i].key)) }
+                        // 只在「每周」时才需要挑星期几，别的循环方式就不占位置
+                        if (RemindRepeat.of(settings.remindRepeat) == RemindRepeat.WEEKLY) {
+                            TimeWheel(
+                                values = WEEKDAY_LABELS,
+                                selected = weekdayIndex(settings.remindWeekday),
+                                modifier = Modifier.weight(1f)
+                            ) { i -> update(settings.copy(remindWeekday = WEEKDAY_KEYS[i])) }
+                        }
                     }
                     Spacer(Modifier.height(12.dp))
                     Text("常用时段", style = MaterialTheme.typography.labelSmall, color = c.inkSoft)
@@ -383,6 +466,139 @@ fun SettingsScreen(
                             }
                         }
                     }
+                    // 提醒到底排没排上，直接写清楚，方便排查
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(c.cardAlt)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("\uD83D\uDD50", fontSize = 16.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "下次提醒：${nextReminderText(
+                                    settings.remindHour,
+                                    settings.remindMinute,
+                                    settings.remindRepeat,
+                                    settings.remindWeekday
+                                )}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = c.ink
+                            )
+                            Text(
+                                if (scheduled) {
+                                    "已经排上，到点就会来"
+                                } else {
+                                    "还没排上，重新打开一下 App 就会自动排"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = c.inkSoft
+                            )
+                        }
+                    }
+
+                    // 想马上验证收不收得到：点一下立刻弹一条
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(c.accentSoft)
+                            .clickable {
+                                if (hasNotifyPermission(context)) {
+                                    ReminderReceiver.notifyNow(context)
+                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    permissionLauncher.launch(
+                                        Manifest.permission.POST_NOTIFICATIONS
+                                    )
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("\uD83D\uDD14", fontSize = 16.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "立刻试一条提醒",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = c.ink
+                            )
+                            Text(
+                                if (hasNotifyPermission(context)) {
+                                    "点一下马上弹一条通知，看看手机收不收得到"
+                                } else {
+                                    "还没给通知权限，点这里先开权限，之后每天到点就会来"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = c.inkSoft
+                            )
+                        }
+                    }
+
+                    // 被系统省电掐住后台是最常见的原因，这里给个放行入口
+                    if (batteryBlocked) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(c.cardAlt)
+                                .clickable { openBatterySettings(context) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("\uD83D\uDD0B", fontSize = 16.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "让提醒在后台也能响",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = c.ink
+                                )
+                                Text(
+                                    "系统省电会掐掉后台，App 被清掉后提醒就不来了。点这里放行，" +
+                                        "另外在多任务页把知新下拉锁上更稳",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = c.inkSoft
+                                )
+                            }
+                        }
+                    }
+
+                    // 通知被关掉同样收不到，提示去打开
+                    if (notifyBlocked) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(c.cardAlt)
+                                .clickable { openNotificationSettings(context) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("\uD83D\uDD15", fontSize = 16.sp)
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "通知被关掉了",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = c.ink
+                                )
+                                Text(
+                                    "点这里把通知打开，不然到点也没动静",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = c.inkSoft
+                                )
+                            }
+                        }
+                    }
+
                     Spacer(Modifier.height(14.dp))
                     // 点一下立刻弹一条，用来确认提醒到底有没有生效
                     Row(modifier = Modifier.fillMaxWidth()) {
@@ -541,9 +757,12 @@ fun SettingsScreen(
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     AI_PRESETS.forEach { (label, url, model) ->
-                        ChoiceChip(label, settings.aiBaseUrl == url, Modifier.weight(1f)) {
+                        // 选中看的是输入框里现在的值，点一下就真的换过去（不用再点保存）
+                        ChoiceChip(label, aiBase.trim() == url, Modifier.weight(1f)) {
                             aiBase = url
                             aiModel = model
+                            onChange(settings.copy(aiBaseUrl = url, aiModel = model))
+                            aiResult = "已切到「$label」· 模型 $model"
                         }
                     }
                 }
@@ -677,6 +896,7 @@ fun SettingsScreen(
 
     if (showAbout) {
         androidx.compose.material3.AlertDialog(
+            modifier = dialogEnter(),
             onDismissRequest = { showAbout = false },
             containerColor = c.card,
             shape = RoundedCornerShape(24.dp),
@@ -716,19 +936,37 @@ fun SettingsScreen(
     }
 }
 
-/** 一列上下滑动就能选的时间滚轮：滑到中间的那一项即选中。 */
+/**
+ * 一列上下滑动就能选的时间滚轮：滑到中间的那一项即选中。
+ * loop = true 时循环滚：小时 23 后面接着 0，分钟 59 后面接着 0。
+ */
 @Composable
 private fun TimeWheel(
     values: List<String>,
     selected: Int,
     modifier: Modifier = Modifier,
+    loop: Boolean = false,
     onSelect: (Int) -> Unit
 ) {
     val c = LocalAppColors.current
+    val size = values.size
+    // 循环：把这一列复制很多份，当前值落在中间那份上，来回滑都滑不到头
+    val copies = if (loop) 101 else 1
+    val total = size * copies
+    val middle = size * (copies / 2)
+    val targetOf: (Int) -> Int = { if (loop) middle + it else it }
     val state = rememberLazyListState()
-    // 打开时把当前时间滚到中间
-    LaunchedEffect(Unit) {
-        state.scrollToItem((selected - 1).coerceAtLeast(0))
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(selected) {
+        val target = (targetOf(selected) - 1).coerceAtLeast(0)
+        val center = state.firstVisibleItemIndex + 1
+        // 第一次组合把当前值摆到中间；之后外面改了值（比如点了常用时段）再挪过去
+        if (!settled) {
+            settled = true
+            state.scrollToItem(target)
+        } else if (center % size != selected.coerceIn(0, size - 1)) {
+            state.scrollToItem(target)
+        }
     }
     // 滑完停下后，把停在中间的那一格当作选中（刚打开时不动，避免改掉原来的时间）
     var userScrolled by remember { mutableStateOf(false) }
@@ -737,7 +975,14 @@ private fun TimeWheel(
             userScrolled = true
         } else if (userScrolled) {
             val center = state.firstVisibleItemIndex + 1
-            if (center in values.indices && center != selected) onSelect(center)
+            if (center in 0 until total) {
+                val value = center % size
+                if (value != selected) onSelect(value)
+                // 快滑到头了就悄悄挪回中间那份，这样两头都能继续滑下去
+                if (loop && (center < size || center > total - size)) {
+                    state.scrollToItem(targetOf(value))
+                }
+            }
         }
     }
     LazyColumn(
@@ -746,15 +991,16 @@ private fun TimeWheel(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        itemsIndexed(values) { index, text ->
-            val picked = index == selected
+        items(total) { index ->
+            val text = values[index % size]
+            val picked = index % size == selected
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(34.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (picked) c.accentSoft else Color.Transparent)
-                    .clickable { onSelect(index) },
+                    .clickable { onSelect(index % size) },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -881,6 +1127,7 @@ private fun TagManagerDialog(
     val list = remember(tags) { tags.toMutableStateList() }
 
     androidx.compose.material3.AlertDialog(
+        modifier = dialogEnter(),
         onDismissRequest = onDismiss,
         containerColor = c.card,
         shape = RoundedCornerShape(24.dp),
@@ -931,6 +1178,7 @@ private fun TrashDialog(
     val c = LocalAppColors.current
     val trash = Store.trash()
     androidx.compose.material3.AlertDialog(
+        modifier = dialogEnter(),
         onDismissRequest = onDismiss,
         containerColor = c.card,
         shape = RoundedCornerShape(24.dp),

@@ -100,6 +100,8 @@ data class CustomItem(
     val windowEnd: String = "",
     /** 完成一次获得的努力值（1~10）。 */
     val reward: Int = 2,
+    /** 打卡后弹不弹窗让我写点什么：关掉就打完直接过，不弹窗。 */
+    val noteEditable: Boolean = true,
     /** 任务分类：任意 / 起床 / 早晨 / 中午 / 下午 / 晚上 / 睡前 / 周末。 */
     val category: String = "任意"
 ) {
@@ -111,6 +113,9 @@ data class CustomItem(
 
     /** 是否设置了打卡时段。 */
     fun hasWindow(): Boolean = windowStart.isNotBlank() && windowEnd.isNotBlank()
+
+    /** 打卡时没写内容的话，记录里就自动写这一句。 */
+    fun autoText(): String = "$emoji 完成了「$name」"
 }
 
 /** 任务可选的难度。 */
@@ -151,6 +156,73 @@ fun inCheckWindow(item: CustomItem, nowMillis: Long): Boolean {
 /** 自定义打卡产生的记录会带上这个标签，方便区分。 */
 const val CUSTOM_TAG = "自定义"
 
+/** 待办的四个区域：按「重不重要 / 急不急」分，摆成左上到右下的轻重缓急。 */
+enum class TodoZone(
+    /** 这一格叫什么，比如「马上做」。 */
+    val label: String,
+    /** 底下那行小字，说清重不要紧、急不急。 */
+    val desc: String,
+    val emoji: String,
+    val colorHex: Long
+) {
+    DO_NOW("马上做", "重要 · 紧急", "\uD83D\uDD25", 0xFFE07A5FL),
+    PLAN("计划做", "重要 · 不紧急", "⚡", 0xFFF0A24CL),
+    QUICK("抽空做", "不重要 · 紧急", "\uD83C\uDF31", 0xFF9BB6D6L),
+    DROP("随意做", "不重要 · 不紧急", "\uD83C\uDF43", 0xFF7FBFA8L);
+
+    companion object {
+        /** 越靠前越要紧：左上第一、右上第二、左下第三、右下第四。 */
+        fun of(index: Int): TodoZone = entries[index.coerceIn(0, entries.size - 1)]
+    }
+}
+
+/** 一条待办，属于某一天、某一个区域。 */
+data class TodoItem(
+    val id: String = "",
+    val text: String = "",
+    /** 所在区域：[TodoZone] 的下标（0..3）。 */
+    val zone: Int = 0,
+    val done: Boolean = false,
+    /** 完成的那一刻（毫秒），0 = 还没完成。 */
+    val doneAt: Long = 0L,
+    val createdAt: Long = System.currentTimeMillis(),
+    /** 属于哪一天（dateKey）。 */
+    val dateKey: String = "",
+    /** 开始时间（毫秒），0 = 没设时间。 */
+    val startAt: Long = 0L,
+    /** 结束时间（毫秒），0 = 没设时间。设了就表示这段时间内要做完。 */
+    val endAt: Long = 0L,
+    /** 删掉先放回收站：true = 在回收站里，页面上看不到。 */
+    val deleted: Boolean = false
+) {
+    /** 有没有设时间范围。 */
+    fun hasRange(): Boolean = startAt > 0L && endAt > 0L
+
+    /** 从哪天开始（没设时间就是它所在那天）。 */
+    fun startKey(): String =
+        if (startAt > 0L) DateKey.fromMillis(startAt) else dateKey
+
+    /** 到哪天结束（没设时间就是它所在那天；结束比开始早算第二天）。 */
+    fun endKey(): String = when {
+        endAt <= 0L -> startKey()
+        endAt < startAt -> DateKey.fromMillis(endAt + DAY_MILLIS)
+        else -> DateKey.fromMillis(endAt)
+    }
+
+    /**
+     * 这一天要不要显示它。跨越几天的待办，中间的每一天都算。
+     * dateKey 比较按字典序就行，因为它是 yyyy-MM-dd 这种格式。
+     */
+    fun covers(key: String): Boolean = key in startKey()..endKey()
+
+    /** 横跨几天（1 = 就这一天）。 */
+    fun spanDays(): Int =
+        ((DateKey.toMillis(endKey()) - DateKey.toMillis(startKey())) / DAY_MILLIS).toInt() + 1
+}
+
+/** 一天的毫秒数。 */
+private const val DAY_MILLIS = 24 * 60 * 60 * 1000L
+
 /**
  * 一条打卡 / 故事记录。全部字段都存在本机。
  */
@@ -170,10 +242,18 @@ data class Entry(
      * 读取一律走 [imageList]，避免 NPE。
      */
     val images: List<String>? = null,
+    /**
+     * 语音文件名列表（文件存在私有目录 filesDir/audio/ 下）。
+     * 同样可空，为的是老数据反序列化不炸。
+     */
+    val audio: List<String>? = null,
     val deleted: Boolean = false
 ) {
     /** 安全读取图片列表（老数据没有 images 字段时返回空）。 */
     val imageList: List<String> get() = images.orEmpty()
+
+    /** 安全读取语音列表。 */
+    val audioList: List<String> get() = audio.orEmpty()
 
     /** 补齐 id 与日期键，保证老数据 / 导入数据也能正常显示。 */
     fun normalize(): Entry {

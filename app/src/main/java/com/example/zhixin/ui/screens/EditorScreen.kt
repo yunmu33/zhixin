@@ -44,6 +44,7 @@ import com.example.zhixin.ui.components.CardShape
 import com.example.zhixin.ui.components.CategoryRow
 import com.example.zhixin.ui.components.ChipShape
 import com.example.zhixin.ui.components.MoodPicker
+import com.example.zhixin.ui.components.imeAwareBottomPadding
 import com.example.zhixin.ui.components.PrimaryButton
 import com.example.zhixin.ui.components.ScreenTopBar
 import com.example.zhixin.ui.components.SoftCard
@@ -90,6 +91,8 @@ fun EditorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                // 键盘弹出时内容跟着上移，光标不被挡住
+                .imeAwareBottomPadding()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {

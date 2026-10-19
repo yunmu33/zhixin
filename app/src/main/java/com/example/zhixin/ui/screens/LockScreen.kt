@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.zhixin.data.AppSettings
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dialogEnter
 
 @Composable
 fun LockScreen(settings: AppSettings, onUnlock: () -> Unit) {
@@ -131,6 +132,7 @@ fun GuideDialog(
         "\uD83D\uDC64" to "我的：注册登录后解锁头像昵称、成就徽章与数据备份。"
     )
     androidx.compose.material3.AlertDialog(
+        modifier = dialogEnter(),
         onDismissRequest = { onClose(false) },
         containerColor = c.card,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),

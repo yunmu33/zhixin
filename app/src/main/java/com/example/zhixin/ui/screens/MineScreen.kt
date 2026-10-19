@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -31,7 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -47,7 +52,7 @@ import com.example.zhixin.data.Entry
 import com.example.zhixin.data.Heat
 import com.example.zhixin.data.ImageStore
 import com.example.zhixin.data.Store
-import com.example.zhixin.ui.components.HeatBar
+import com.example.zhixin.ui.components.LevelNowBlock
 import com.example.zhixin.ui.components.ScreenTopBar
 import com.example.zhixin.ui.components.SectionTitle
 import com.example.zhixin.ui.components.SoftCard
@@ -164,14 +169,7 @@ fun MineScreen(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                HeatBar(progress = remember(totalHeat) { Heat.progress(totalHeat) })
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    Heat.nextLevelName(totalHeat)?.let { "再攒 ${Heat.needToNext(totalHeat)} 热度升到「$it」" }
-                        ?: "热度已爆表，你太稳了！",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = c.inkSoft
-                )
+                LevelNowBlock(totalHeat = totalHeat)
             }
         }
 
@@ -217,6 +215,7 @@ fun MineScreen(
     }
 
 }
+
 
 /**
  * 头像：有上传的图片就显示图片，没有就显示表情头像。

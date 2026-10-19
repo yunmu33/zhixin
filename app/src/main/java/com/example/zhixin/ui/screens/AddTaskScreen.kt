@@ -163,25 +163,15 @@ fun AddTaskScreen(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "不挑就按顺序自动分配",
+                "一共 ${TASK_COLORS.size} 种，按色系排好了",
                 style = MaterialTheme.typography.labelSmall,
                 color = c.inkSoft
             )
             Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ColorDot(color = null, picked = colorIndex < 0) { colorIndex = -1 }
-                TASK_COLORS.indices.forEach { i ->
-                    ColorDot(color = Color(TASK_COLORS[i]), picked = colorIndex == i) {
-                        colorIndex = i
-                    }
-                }
-            }
+            TaskColorPicker(
+                picked = colorIndex,
+                onPick = { colorIndex = it }
+            )
         }
 
         // ── 难度 ──

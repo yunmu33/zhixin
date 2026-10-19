@@ -15,6 +15,10 @@ data class AppSettings(
     val remindEnabled: Boolean = false,
     val remindHour: Int = 21,
     val remindMinute: Int = 0,
+    /** 提醒怎么循环：daily 每天 / weekday 工作日 / weekend 周末 / weekly 每周指定那天。 */
+    val remindRepeat: String = RemindRepeat.DAILY.key,
+    /** weekly 时提醒周几（Calendar 的星期，2=周一）。 */
+    val remindWeekday: Int = java.util.Calendar.MONDAY,
     val password: String = "",             // 空 = 无密码锁
     val tags: List<String> = DEFAULT_TAGS,
     val customItems: List<CustomItem> = DEFAULT_CUSTOM_ITEMS,
@@ -34,10 +38,14 @@ data class AppSettings(
     val aiModel: String = "deepseek-chat",
     // 示例任务是否已经收敛过（只做一次，之后不再动用户的列表）
     val samplesTrimmed: Boolean = false,
+    /** 打卡后弹不弹窗让我写点什么（关掉就打完直接过）。 */
+    val checkNotePrompt: Boolean = true,
     /** 已经点亮过的成就名，用来判断哪些是「刚解锁」的。 */
     val unlockedBadges: List<String> = emptyList(),
     /** 是否已经把当前成就记过一次底（老数据不该一次性弹一堆提示）。 */
-    val badgesSeeded: Boolean = false
+    val badgesSeeded: Boolean = false,
+    /** 四象限待办，按天存。 */
+    val todos: List<TodoItem> = emptyList()
 ) {
     fun lockEnabled(): Boolean = password.isNotBlank()
     fun aiEnabled(): Boolean = aiKey.isNotBlank() && aiBaseUrl.isNotBlank()

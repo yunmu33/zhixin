@@ -43,6 +43,7 @@ import com.example.zhixin.ui.components.SoftCard
 import com.example.zhixin.ui.components.StatCard
 import com.example.zhixin.ui.components.TinyButton
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dialogEnter
 
 /**
  * 日记内容（已合并进「心情日记」页，用顶部的「心情 / 日记」切换）：
@@ -320,6 +321,7 @@ fun DiaryScreen(
                 .sortedByDescending { it.time }
         }
         AlertDialog(
+            modifier = dialogEnter(),
             onDismissRequest = { dayDialogKey = null },
             containerColor = c.card,
             shape = RoundedCornerShape(20.dp),

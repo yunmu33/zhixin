@@ -22,7 +22,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -483,24 +489,42 @@ fun MonthGrid(
                     val key = DateKey.fromMillis(millis)
                     val inMonth = DateKey.monthOf(millis) == month && DateKey.yearOf(millis) == year
                     val entry = dayMap[key]
-                    val bg = if (entry != null) moodColorOf(entry.mood) else c.cardAlt
+                    val picked = key == selected
+                    // 选中框 / 颜色慢慢过渡，点下去是从上一格「挪」过来的感觉
+                    val bgColor by animateColorAsState(
+                        targetValue = if (entry != null) moodColorOf(entry.mood) else c.cardAlt,
+                        animationSpec = tween(220),
+                        label = "monthCellBg"
+                    )
+                    val ringWidth by animateDpAsState(
+                        targetValue = when {
+                            picked -> 3.dp
+                            key == today -> 2.dp
+                            else -> 0.dp
+                        },
+                        animationSpec = tween(220),
+                        label = "monthCellRing"
+                    )
+                    val ringColor by animateColorAsState(
+                        targetValue = if (picked) c.accent else c.accent.copy(alpha = 0.5f),
+                        animationSpec = tween(220),
+                        label = "monthCellRingColor"
+                    )
+                    val scale by animateFloatAsState(
+                        targetValue = if (picked) 1.06f else 1f,
+                        animationSpec = tween(220),
+                        label = "monthCellScale"
+                    )
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .height(46.dp)
+                            .scale(scale)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(if (inMonth) bg else bg.copy(alpha = 0.35f))
-                            .then(
-                                if (key == selected) {
-                                    Modifier.border(3.dp, c.accent, RoundedCornerShape(12.dp))
-                                } else if (key == today) {
-                                    Modifier.border(
-                                        2.dp,
-                                        c.accent.copy(alpha = 0.5f),
-                                        RoundedCornerShape(12.dp)
-                                    )
-                                } else Modifier
+                            .background(
+                                if (inMonth) bgColor else bgColor.copy(alpha = 0.35f)
                             )
+                            .border(ringWidth, ringColor, RoundedCornerShape(12.dp))
                             .then(if (inMonth) Modifier.clickable { onDayClick(key) } else Modifier),
                         contentAlignment = Alignment.Center
                     ) {

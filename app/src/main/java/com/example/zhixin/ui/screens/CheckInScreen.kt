@@ -57,7 +57,9 @@ import com.example.zhixin.ui.components.SectionTitle
 import com.example.zhixin.ui.components.SoftCard
 import com.example.zhixin.ui.components.TagChip
 import com.example.zhixin.ui.components.TinyButton
+import androidx.compose.animation.AnimatedContent
 import com.example.zhixin.ui.theme.LocalAppColors
+import com.example.zhixin.ui.theme.dateTransition
 import com.example.zhixin.ui.theme.moodColorOf
 
 /**
@@ -99,13 +101,17 @@ fun CheckInScreen(
     val need = remember(totalHeat) { Heat.needToNext(totalHeat) }
 
     val selectedMillis = DateKey.toMillis(selectedDate)
-    val dayGap = DateKey.daysBetween(selectedMillis, now)
-    val dateLabel = when (dayGap) {
-        0 -> "今天"
-        1 -> "昨天"
-        2 -> "前天"
-        else -> "${DateKey.monthDayLabel(selectedMillis)} ${DateKey.weekdayLabel(selectedMillis)}"
+    /** 某天的说法：今天 / 昨天 / 前天 / 具体日期（切日期动画里要用）。 */
+    fun labelOf(key: String, today: String): String {
+        if (key == today) return "今天"
+        val millis = DateKey.toMillis(key)
+        return when (DateKey.daysBetween(millis, now)) {
+            1 -> "昨天"
+            2 -> "前天"
+            else -> "${DateKey.monthDayLabel(millis)} ${DateKey.weekdayLabel(millis)}"
+        }
     }
+    val dateLabel = labelOf(selectedDate, todayKey)
     val selectedHeat = remember(entries, selectedDate) { Heat.dayHeat(entries, selectedDate) }
 
     var mood by remember { mutableStateOf<Mood?>(null) }
@@ -188,30 +194,45 @@ fun CheckInScreen(
                 CalendarStat("\uD83D\uDD25", "连续打卡", "${streak}天", Modifier.weight(1f))
             }
             Spacer(Modifier.height(12.dp))
-            MonthGrid(
-                year = viewYear,
-                month = viewMonth,
-                dayMap = dayMap,
-                selected = selectedDate,
-                onDayClick = { key ->
-                    if (key <= todayKey) selectedDate = key
-                    done = false
-                    error = null
-                }
-            )
+            // 翻月时格子滑着换（往后一月往左滑）
+            AnimatedContent(
+                targetState = viewYear * 12 + viewMonth,
+                transitionSpec = { dateTransition(targetState > initialState) },
+                label = "checkInMonth"
+            ) { idx ->
+                MonthGrid(
+                    year = idx / 12,
+                    month = idx % 12,
+                    dayMap = dayMap,
+                    selected = selectedDate,
+                    onDayClick = { key ->
+                        if (key <= todayKey) selectedDate = key
+                        done = false
+                        error = null
+                    }
+                )
+            }
             Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "选中：$dateLabel · ${DateKey.monthDayLabel(selectedMillis)}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = c.accent,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    if (selectedHeat > 0) "当天热度 🔥$selectedHeat" else "这天还没有打卡",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = c.inkSoft
-                )
+            // 换一天时「选中」那行跟着滑
+            AnimatedContent(
+                targetState = selectedDate,
+                transitionSpec = { dateTransition(targetState > initialState) },
+                label = "checkInDay"
+            ) { day ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "选中：${labelOf(day, todayKey)} · " +
+                            DateKey.monthDayLabel(DateKey.toMillis(day)),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = c.accent,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        if (selectedHeat > 0) "当天热度 🔥$selectedHeat" else "这天还没有打卡",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.inkSoft
+                    )
+                }
             }
         }
 
