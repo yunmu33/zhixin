@@ -90,7 +90,9 @@ fun MoodScreen(
     onQuickCheckIn: (Mood, String, String, List<String>) -> Unit,
     onUpdateEntry: (Entry) -> Unit,
     /** 向导最后一步写的日记：日期、标题、正文、配图文件名。 */
-    onAddDiary: (String, String, String, List<String>, List<String>) -> Unit
+    onAddDiary: (String, String, String, List<String>, List<String>) -> Unit,
+    /** 右上角点「心情罐」，把正在看的那个月带过去。 */
+    onOpenJar: (Calendar) -> Unit
 ) {
     val c = LocalAppColors.current
     val today = DateKey.fromMillis(System.currentTimeMillis())
@@ -139,11 +141,33 @@ fun MoodScreen(
                         .height(32.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "\uD83D\uDE0A 心情日记",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = c.ink
-                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "\uD83D\uDE0A 心情日记",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = c.ink
+                        )
+                    }
+                    // 心情罐：把当月的心情装进罐子里看看
+                    Box(
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(17.dp))
+                            .background(c.cardAlt)
+                            .clickable { onOpenJar(currentMonth) }
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("\uD83E\uDED9", fontSize = 16.sp)
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                "心情罐",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = c.ink
+                            )
+                        }
+                    }
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(

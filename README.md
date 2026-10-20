@@ -34,6 +34,7 @@
 - 27 种心情各不相同：开心、笑哭、心动、亲亲、俏皮、调皮、得意、满足、平静、乖巧、坏笑、淡定、惊讶、震惊、慌张、委屈、难受、生气、赌气、暴怒、低落、想哭、难过、大哭、发晕、受伤、生病
 - 手绘图同时出现在：月历、打卡/写记录的心情卡片、统计页情绪分布、记录详情
 - 全屏选择页面，左上角显示日期，右上角关闭按钮
+- **右上角「🫙 心情罐」**：把当月记下的心情**一颗颗装进玻璃罐里** —— 进页面会按日期顺序一颗颗掉进去、堆着；点任意一颗，下面显示那天的日期、心情和写的话；罐子上方有两张统计卡（装了多少颗 / 心情温度）和「这个月最常出现」榜
 
 ### 📔 小屋日记
 
@@ -67,6 +68,28 @@
 - 到点响完会按规则自动排下一次（比如只工作日提醒，周五响完排到下周一）；手机重启后也会重新排上
 - ⚠️ 在系统设置里对 App 点了「**强制停止**」，Android 会把排好的闹钟全部清掉，得重新打开一次 App 才会再排上
 
+#### 提醒为什么有时不来，以及兜底怎么做的
+
+提醒准不准，取决于**系统有没有把闹钟留着**：
+
+| 情况 | 原生 Android 的实测结果 |
+|---|---|
+| 按 Home 退到后台 | ✅ 到点正常通知 |
+| 从最近任务**划掉**（进程被杀） | ✅ 到点正常通知 |
+| 系统设置里「**强制停止**」 | ❌ 闹钟被清，只能重新打开一次 App |
+| 重启手机 | ✅ 开机后自动重排 |
+| 小米 / 华为 / OPPO 等省电策略较狠的 ROM | ⚠️ 划掉任务常等同于强制停止，会把闹钟清掉 |
+
+为此加了一层**保命机制**（`ReminderGuard` + `ReminderJobService`，用的是系统自带的 JobScheduler，无第三方依赖）：
+
+- 挂一个**每 15 分钟的后台自检**，盯着系统里还有没有排好的闹钟
+- 发现闹钟没了（被划后台 / 厂商清掉）→ **立刻重新排上**
+- 发现「今天该提醒的点已经过了、但今天还没提醒过」→ **补一条通知**（会晚一点，但不会整天缺席）
+- 一天只补一次，正常到点提醒过的日子不会再补打扰你
+- App 回到前台、开关提醒、覆盖安装、开机重启时都会各补一次检查
+
+在真机上想更稳，建议再配两件一次性设置：「把小屋加入**省电白名单**」和「允许**自启动 / 后台运行**」（国内 ROM 通常藏在「应用管理 → 省电策略」里）。
+
 ---
 
 ## 隐私与数据
@@ -80,9 +103,17 @@
 
 ## 版本
 
-当前版本：**v1.4.0**（`versionCode = 4`，`versionName = "1.4.0"`，见 `app/build.gradle.kts`）。
+当前版本：**v1.5.0**（`versionCode = 5`，`versionName = "1.5.0"`，见 `app/build.gradle.kts`）。
 
 应用内「设置 → 关于知新」显示当前版本号（读取 `BuildConfig.VERSION_NAME`，改一处即可）。
+
+### v1.5.0 更新日志
+
+- 🛡 **提醒加了保命机制**：后台每 15 分钟自检一次，发现闹钟被系统收走（划出后台、厂商省电策略）就立刻重排；发现当天该提醒的点已过且还没提醒过，就**补一条通知**（一天只补一次，不会反复打扰）
+- 🔄 **重启 / 覆盖安装后不再丢循环方式**：以前开机重排会退回「每天」，现在记住你选的工作日 / 周末 / 每周某天
+- 📦 开机广播补了 `MY_PACKAGE_REPLACED`，升级 App 后也会自动把提醒排回来
+- 🧱 新增 `ReminderGuard` / `ReminderJobService`（基于系统 JobScheduler，没引入第三方依赖）；设置项新增 `lastRemindDateKey` 记录当天有没有提醒过
+- 🫙 **心情日记右上角新增「心情罐」**：当月每天记下的心情会像糖一样**一颗颗掉进玻璃罐里**堆着，罐子有轻微晃动；点任意一颗下面就显示那天的日期、心情和当时写的字；带「罐子里多少颗 / 心情温度 / 最常出现 top4」三块统计
 
 ### v1.4.0 更新日志
 
@@ -127,8 +158,8 @@
 1. 修改 `app/build.gradle.kts`：
 
 ```kotlin
-versionCode = 5        // 必须 +1（或更大）
-versionName = "1.5.0"  // 同步更新
+versionCode = 6        // 必须 +1（或更大）
+versionName = "1.6.0"  // 同步更新
 ```
 
 2. 打包：
@@ -172,8 +203,8 @@ app/src/main/java/com/example/zhixin/
 ├── ui/
 │   ├── components/ 通用组件：SoftCard、StatCard、PrimaryButton、Chips、图表、月历、
 │   │               等级明示与各等级阶梯 LevelBlocks
-│   ├── screens/    各个页面：TasksScreen、TodoScreen、NewScreen、MoodScreen、MineScreen、
-│   │               ProfileScreen、SettingsScreen、TaskHeatScreen、AchievementScreen…
+│   ├── screens/    各个页面：TasksScreen、TodoScreen、NewScreen、MoodScreen、MoodJarScreen、
+│   │               MineScreen、ProfileScreen、SettingsScreen、TaskHeatScreen、AchievementScreen…
 │   ├── theme/      主题、皮肤、配色、心情表情素材映射 MoodIcons
 │   └── AppRoot.kt  全局路由与五个页签
 └── MainActivity.kt

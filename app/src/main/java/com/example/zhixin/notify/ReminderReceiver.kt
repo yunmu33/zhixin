@@ -51,6 +51,8 @@ class ReminderReceiver : BroadcastReceiver() {
         ) return
 
         notifyNow(context)
+        // 记下今天已经提醒过，后台自检就不会再重复补一条
+        runCatching { ReminderGuard.markNotified(context) }
     }
 
     companion object {

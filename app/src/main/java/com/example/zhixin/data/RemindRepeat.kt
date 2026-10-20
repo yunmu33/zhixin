@@ -40,6 +40,10 @@ private fun RemindRepeat.hits(dayOfWeek: Int, weekday: Int): Boolean = when (thi
     RemindRepeat.WEEKLY -> dayOfWeek == weekday
 }
 
+/** 这一天要不要提醒（自检时用）。 */
+fun RemindRepeat.matches(cal: Calendar, weekday: Int): Boolean =
+    hits(cal.get(Calendar.DAY_OF_WEEK), weekday)
+
 /**
  * 下一次该响的时刻：从今天起按循环规则往后找第一个「该提醒」的日子，
  * 当天时间已经过去了就顺延到下一天（最多找 8 天，规则不对也不至于死循环）。

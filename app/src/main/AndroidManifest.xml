@@ -35,6 +35,12 @@
             android:name=".notify.ReminderReceiver"
             android:exported="false" />
 
+        <!-- 提醒的后台自检：闹钟被系统收走时，由它把提醒补回来 -->
+        <service
+            android:name=".notify.ReminderJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <!-- 开机或重装后重新排上每日提醒 -->
         <receiver
             android:name=".notify.BootReceiver"
@@ -42,6 +48,8 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <!-- 覆盖安装 / 更新 App 之后也要重新排一次，免得提醒断了 -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <!-- 时间被改动后重新排一次，免得提醒时间算错 -->
                 <action android:name="android.intent.action.TIME_SET" />

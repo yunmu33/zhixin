@@ -41,6 +41,9 @@ fun applyReminder(
             settings.remindRepeat,
             settings.remindWeekday
         )
+        // 系统里要是没排上（被省电策略 / 划后台清掉了），这里立刻补回来
+        ReminderGuard.scheduleGuard(context)
+        runCatching { ReminderGuard.check(context, catchUp = false) }
         // 没开「闹钟和提醒」权限时只能走不精确闹钟，提示一下
         if (!ReminderReceiver.hasExactPermission(context)) onNeedExactAlarm()
     } else {

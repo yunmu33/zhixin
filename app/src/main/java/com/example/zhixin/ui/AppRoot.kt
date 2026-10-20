@@ -84,6 +84,7 @@ import com.example.zhixin.ui.screens.EditorScreen
 import com.example.zhixin.ui.screens.GuideDialog
 import com.example.zhixin.ui.screens.LockScreen
 import com.example.zhixin.ui.screens.MineScreen
+import com.example.zhixin.ui.screens.MoodJarScreen
 import com.example.zhixin.ui.screens.NewScreen
 import com.example.zhixin.ui.screens.SettingsFocus
 import com.example.zhixin.ui.screens.SettingsScreen
@@ -109,18 +110,19 @@ import kotlinx.coroutines.delay
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Calendar
 import java.util.Locale
 
 /** 一条待办的 id：时间 + 随机数，够用就行。 */
 private fun newTodoId(): String =
     "t" + System.currentTimeMillis().toString() + (0..999).random()
 
-private enum class Page { Main, CheckIn, TaskCheckIn, Settings, Trash, Heat }
+private enum class Page { Main, CheckIn, TaskCheckIn, Settings, Trash, Heat, Jar }
 
 /** 顶层显示的是哪一层（用来决定页面切换动画往哪个方向走）。 */
 private enum class TopPage {
     Lock, Main, Editor, AddTask, TaskDetail,
-    CheckIn, TaskCheckIn, Settings, Trash, Heat
+    CheckIn, TaskCheckIn, Settings, Trash, Heat, Jar
 }
 
 /** 「我的」里点开的二级页面。 */
@@ -156,6 +158,8 @@ fun AppRoot() {
     // 刚点亮的成就排队提示，一次显示一个
     var badgeQueue by remember { mutableStateOf(listOf<Badge>()) }
     var tab by remember { mutableIntStateOf(0) }
+    // 从心情日记点到「心情罐」时，跟着打开它当时正在看的那个月
+    var jarMonth by remember { mutableStateOf<Calendar?>(null) }
     // 任务主页日历选中的日期，进详细打卡页时带过去
     var taskCheckDateKey by remember {
         mutableStateOf(DateKey.fromMillis(System.currentTimeMillis()))
@@ -377,6 +381,7 @@ fun AppRoot() {
                 page == Page.Settings -> TopPage.Settings
                 page == Page.Trash -> TopPage.Trash
                 page == Page.Heat -> TopPage.Heat
+                page == Page.Jar -> TopPage.Jar
                 else -> TopPage.Main
             }
             AnimatedContent(
@@ -518,6 +523,14 @@ fun AppRoot() {
                                 )
                             )
                         },
+                        onBack = { page = Page.Main }
+                    )
+                }
+
+                TopPage.Jar -> {
+                    MoodJarScreen(
+                        entries = entries,
+                        initialMonth = jarMonth,
                         onBack = { page = Page.Main }
                     )
                 }
@@ -708,6 +721,7 @@ fun AppRoot() {
                         todoDateKey = todoDateKey,
                         onTodoDateChange = { todoDateKey = it },
                         onOpenEntry = { detail = it },
+                        onOpenJar = { cal -> jarMonth = cal; page = Page.Jar },
                         onProfileChange = { Prefs.update(context, it) },
                         onShowGuide = { guide = true },
                         onLogin = { showLogin = true },
@@ -819,6 +833,8 @@ private fun MainScaffold(
     onQuickSave: (String) -> Unit,
     onAddNew: () -> Unit,
     onOpenEntry: (Entry) -> Unit,
+    /** 心情日记页右上角：打开心情罐。 */
+    onOpenJar: (Calendar) -> Unit,
     onProfileChange: (AppSettings) -> Unit,
     onShowGuide: () -> Unit,
     onLogin: () -> Unit,
@@ -985,6 +1001,7 @@ private fun MainScaffold(
 
                 3 -> MoodScreen(
                     entries = entries,
+                    onOpenJar = onOpenJar,
                     onQuickCheckIn = { mood, text, dateKey, tags ->
                         Store.add(
                             scopeContext,

@@ -25,8 +25,8 @@ android {
         minSdk = 24
         targetSdk = 37
         // 发新版时：versionCode 必须比已安装的版本大，versionName 同步更新。
-        versionCode = 4
-        versionName = "1.4.0"
+        versionCode = 5
+        versionName = "1.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

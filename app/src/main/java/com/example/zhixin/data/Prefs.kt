@@ -19,6 +19,8 @@ data class AppSettings(
     val remindRepeat: String = RemindRepeat.DAILY.key,
     /** weekly 时提醒周几（Calendar 的星期，2=周一）。 */
     val remindWeekday: Int = java.util.Calendar.MONDAY,
+    /** 上一次真的弹出提醒是几号（yyyy-MM-dd），用来判断今天有没有提醒过。 */
+    val lastRemindDateKey: String = "",
     val password: String = "",             // 空 = 无密码锁
     val tags: List<String> = DEFAULT_TAGS,
     val customItems: List<CustomItem> = DEFAULT_CUSTOM_ITEMS,

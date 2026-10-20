@@ -22,7 +22,12 @@ class BootReceiver : BroadcastReceiver() {
         Prefs.load(context)
         val s = Prefs.settings.value
         if (s.remindEnabled) {
-            ReminderReceiver.schedule(context, s.remindHour, s.remindMinute)
+            // 循环方式也要一起带过去，不然重启后就变回「每天」了
+            ReminderReceiver.schedule(
+                context, s.remindHour, s.remindMinute, s.remindRepeat, s.remindWeekday
+            )
         }
+        // 兜底的自检任务同样要在重启后重新挂上
+        ReminderGuard.scheduleGuard(context)
     }
 }
