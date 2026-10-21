@@ -688,11 +688,6 @@ fun SettingsScreen(
                     )
                 }
             }
-            item {
-                SettingsSection("🗑️", "清空所有数据", "删除全部故事、自己加的任务和标签、密码") {
-                    TinyButton("一键清空") { showClearAll = true }
-                }
-            }
         }
 
         // 使用指南在「我的」里点了就直接打开引导，这里只在全部设置里留个入口

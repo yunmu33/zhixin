@@ -275,6 +275,7 @@ fun CheckInSuccessDialog(
     title: String = "打卡成功！",
     subtitle: String,
     doneNames: List<String> = emptyList(),
+    encourageNotes: List<String> = emptyList(),
     onConfirm: (note: String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -308,6 +309,32 @@ fun CheckInSuccessDialog(
                     color = c.inkSoft,
                     textAlign = TextAlign.Center
                 )
+                val topNotes = encourageNotes.filter { it.isNotBlank() }
+                if (topNotes.isNotEmpty()) {
+                    Spacer(Modifier.height(14.dp))
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        topNotes.forEach { note ->
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(c.accent.copy(alpha = 0.10f))
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("✨", fontSize = 16.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    note,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = c.ink
+                                )
+                            }
+                        }
+                    }
+                }
             }
         },
         text = {

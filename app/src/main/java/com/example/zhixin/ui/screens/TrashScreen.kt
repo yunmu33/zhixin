@@ -65,10 +65,12 @@ fun TrashScreen(
     onRestoreTodo: (TodoItem) -> Unit,
     onDeleteTodoForever: (TodoItem) -> Unit,
     onEmpty: () -> Unit,
+    onClearAll: () -> Unit,
     onBack: () -> Unit
 ) {
     val c = LocalAppColors.current
     var confirmEmpty by remember { mutableStateOf(false) }
+    var confirmClearAll by remember { mutableStateOf(false) }
     val total = trash.size + trashTodos.size
 
     Column(
@@ -139,6 +141,19 @@ fun TrashScreen(
                         )
                     }
                 }
+                // 底部：清空所有数据
+                item {
+                    Spacer(Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        TinyButton(text = "🗑️ 清空所有数据") {
+                            confirmClearAll = true
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
             }
         }
     }
@@ -153,6 +168,19 @@ fun TrashScreen(
                 onEmpty()
             },
             onDismiss = { confirmEmpty = false }
+        )
+    }
+
+    if (confirmClearAll) {
+        ConfirmDialog(
+            title = "清空所有数据？",
+            message = "全部故事、自己加的打卡任务和标签、密码都会被删除，确定继续吗？",
+            confirmText = "清空",
+            onConfirm = {
+                confirmClearAll = false
+                onClearAll()
+            },
+            onDismiss = { confirmClearAll = false }
         )
     }
 }

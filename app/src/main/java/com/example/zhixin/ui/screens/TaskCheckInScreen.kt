@@ -154,6 +154,7 @@ fun TaskCheckInScreen(
     // 打卡成功弹窗：一点打卡就弹，里面还能再补一句
     var showSuccess by remember { mutableStateOf(false) }
     var successNames by remember { mutableStateOf<List<String>>(emptyList()) }
+    var successNotes by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // ── 图片：文件名列表（文件已复制到私有目录）──
     val images = remember { mutableStateListOf<String>() }
@@ -503,6 +504,9 @@ fun TaskCheckInScreen(
                                     })
                             if (wantWrite) {
                                 successNames = doneNames
+                                successNotes = doneNames.mapNotNull { name ->
+                                    settings.customItems.firstOrNull { it.name == name }?.note
+                                }
                                 showSuccess = true
                             } else {
                                 Toast.makeText(context, "打卡完成 ✓", Toast.LENGTH_SHORT).show()
@@ -522,6 +526,7 @@ fun TaskCheckInScreen(
         CheckInSuccessDialog(
             subtitle = "$dateLabel · ${DateKey.monthDayLabel(selectedMillis)}",
             doneNames = successNames,
+            encourageNotes = successNotes,
             onConfirm = { note ->
                 showSuccess = false
                 if (note.isNotBlank()) onAddNote(selectedDate, note)

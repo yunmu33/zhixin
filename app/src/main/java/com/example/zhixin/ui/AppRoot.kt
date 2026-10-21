@@ -66,6 +66,8 @@ import com.example.zhixin.data.CUSTOM_TAG
 import com.example.zhixin.data.Category
 import com.example.zhixin.data.CustomItem
 import com.example.zhixin.data.DateKey
+import com.example.zhixin.data.DEFAULT_CUSTOM_ITEMS
+import com.example.zhixin.data.DEFAULT_TAGS
 import com.example.zhixin.data.Entry
 import com.example.zhixin.data.Heat
 import com.example.zhixin.data.Mood
@@ -659,6 +661,17 @@ fun AppRoot() {
                             }
                             toast(context, "回收站已清空")
                         },
+                        onClearAll = {
+                            Store.clearAll(context)
+                            Prefs.patch(context) { s ->
+                                s.copy(
+                                    password = "",
+                                    customItems = DEFAULT_CUSTOM_ITEMS,
+                                    tags = DEFAULT_TAGS
+                                )
+                            }
+                            toast(context, "已清空所有数据")
+                        },
                         onBack = { page = Page.Main }
                     )
                 }
@@ -743,7 +756,7 @@ fun AppRoot() {
                                     score = 7
                                 )
                             )
-                            toast(context, "新收获已记下 \uD83C\uDF31 热度 +${Heat.BASE}")
+                            toast(context, "新收获已记下 🌱 热度 +${Heat.BASE}")
                         },
                         onAddNew = {
                             editor = EditorArg(null, "", Category.NEW.key, "")

@@ -253,23 +253,6 @@ fun TasksScreen(
     var undoItem by remember { mutableStateOf<CustomItem?>(null) }
     // 日历里点开的那一天（哪个任务 + 几号）
     var dayDialog by remember { mutableStateOf<Pair<CustomItem, Int>?>(null) }
-    // 打卡后浮出来的激励语，过几秒自己消失
-    var cheerText by remember { mutableStateOf<String?>(null) }
-    // 上次抽到第几句，尽量避免连着两次抽到同一句
-    var lastCheer by remember { mutableIntStateOf(-1) }
-    fun pickCheer(item: CustomItem): String {
-        if (item.note.isNotBlank()) return item.note.trim()
-        var i = CHECKIN_CHEERS.indices.random()
-        if (i == lastCheer) i = (i + 1) % CHECKIN_CHEERS.size
-        lastCheer = i
-        return CHECKIN_CHEERS[i]
-    }
-    LaunchedEffect(cheerText) {
-        if (cheerText != null) {
-            delay(2800)
-            cheerText = null
-        }
-    }
 
     Box(modifier = Modifier.fillMaxSize()) {
     LazyColumn(
@@ -371,7 +354,6 @@ fun TasksScreen(
                         } else if (onQuickToggle(item, "")) {
                             // 先打上卡；开了「打卡内容编辑」的才弹窗，关了的只浮一句激励语
                             if (item.noteEditable) successItem = item
-                            cheerText = pickCheer(item)
                             // 两边放个礼花
                             confettiId++
                         }
@@ -398,31 +380,6 @@ fun TasksScreen(
             runId = confettiId,
             modifier = Modifier.fillMaxSize()
         )
-
-        // 打卡后从下面浮出来的小框：说句激励的话，几秒后自己消失
-        AnimatedVisibility(
-            visible = cheerText != null,
-            enter = fadeIn() + slideInVertically { it },
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 24.dp, vertical = 24.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(c.card)
-                    .border(1.dp, c.line, RoundedCornerShape(18.dp))
-                    .padding(horizontal = 18.dp, vertical = 12.dp)
-            ) {
-                Text(
-                    "\uD83C\uDF1F ${cheerText.orEmpty()}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = c.ink,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
     }
 
     dayDialog?.let { (item, day) ->
@@ -460,11 +417,6 @@ fun TasksScreen(
             onConfirm = {
                 undoItem = null
                 onQuickToggle(item, "")
-                cheerText = if (wrote) {
-                    "已撤销「${item.name}」，记录放进回收站了"
-                } else {
-                    "已撤销「${item.name}」，这次打卡清掉了"
-                }
             },
             onDismiss = { undoItem = null }
         )
@@ -486,6 +438,7 @@ fun TasksScreen(
     successItem?.let { item ->
         CheckInSuccessDialog(
             subtitle = "${item.emoji} ${item.name}",
+            encourageNotes = listOf(item.note),
             onConfirm = { note ->
                 successItem = null
                 if (note.isNotBlank()) onQuickNote(item, note)
